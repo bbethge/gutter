@@ -458,35 +458,54 @@ class XEventFilterManager {
     }
 }
 
-class WindowButton: Gtk.RadioButton
+class WindowButton: Gtk.Bin
     // A button representing a toplevel window on a TaskList
 {
     protected Gtk.Widget? _image = null;
     protected Gtk.Label _label = new Gtk.Label(null);
     protected Gtk.HBox hbox = new Gtk.HBox(false, 0);
+    protected bool is_popped_out = false;
+    protected Gtk.RadioButton button = new Gtk.RadioButton(null);
+    protected Gtk.Window? popup = null;
+    protected bool popup_saw_enter_event;
+        // Whether this.popup has received an enter event since we created it
     
-    public WindowButton(SList<Gtk.RadioButton>? group) {
-        Object();
+    public X.Window xwindow { get; set construct; }
+        // The toplevel window that is controlled through this widget
+    
+    public WindowButton(SList<Gtk.RadioButton>? group, X.Window xwindow) {
+        Object(xwindow: xwindow);
         if (group != null) {
-            this.set_group(group);
+            this.button.set_group(group);
         }
     }
     
     construct {
-        this["draw-indicator"] = false;
-        this.relief = Gtk.ReliefStyle.NONE;
+        this.button["draw-indicator"] = false;
+        this.button.relief = Gtk.ReliefStyle.NONE;
+        this.button.enter_notify_event.connect(
+            this.on_button_enter_notify_event
+        );
+        this.button.button_release_event.connect(
+            this.on_button_button_release_event
+        );
+        this.button.show();
+        this.add(this.button);
+        
         this.hbox.show();
-        this.add(this.hbox);
+        this.button.add(this.hbox);
+        
         this._label.ellipsize = Pango.EllipsizeMode.END;
         this._label.xalign = 0.0f;
         this._label.show();
         this.hbox.pack_start(this._label, true, true, 0);
+        
         this.update_spacing();
     }
     
     protected void update_spacing() {
         int spacing = 0;
-        this.style_get("image-spacing", &spacing);
+        this.button.style_get("image-spacing", &spacing);
         this.hbox.spacing = spacing;
     }
     
@@ -514,6 +533,167 @@ class WindowButton: Gtk.RadioButton
             }
         }
     }
+    
+    protected bool on_button_enter_notify_event(
+        Gtk.Widget widget, Gdk.EventCrossing event
+    ) {
+        if (!this.is_popped_out) {
+            // Figure out how wide our size request would be if this._label were
+            // not ellipsized.
+            var prev_ellipsize = this._label.ellipsize;
+            this._label.ellipsize = Pango.EllipsizeMode.NONE;
+            Gtk.Requisition request;
+            this.size_request(out request);
+            this._label.ellipsize = prev_ellipsize;
+            request.width =
+                int.min(request.width, this.get_screen().get_width()/2);
+            
+            // If we currently have smaller width than we would request without
+            // ellipsization (meaning that this._label is probably ellipsized),
+            // create a popup to show more of this._label.
+            Gtk.Allocation alloc;
+            this.get_allocation(out alloc);
+            if (request.width > alloc.width) {
+                this.is_popped_out = true;
+                this.popup = new Gtk.Window(Gtk.WindowType.POPUP);
+                this.popup.add_events(Gdk.EventMask.STRUCTURE_MASK);
+                this.popup.set_type_hint(Gdk.WindowTypeHint.POPUP_MENU);
+                this.popup.destroy_with_parent = true;
+                this.popup.transient_for = this.get_toplevel() as Gtk.Window;
+                
+                this.button.reparent(this.popup);
+                this.popup.set_size_request(request.width, request.height);
+                
+                // FIXME: Make this work with Gutter on the left side?
+                int x = this.get_screen().get_width() - request.width;
+                
+                Gtk.Widget toplevel = this.get_toplevel();
+                int toplevel_y;
+                toplevel.window.get_origin(null, out toplevel_y);
+                int y_wrt_toplevel;
+                bool succ = this.translate_coordinates(
+                    toplevel, 0, 0, null, out y_wrt_toplevel
+                ); return_if_fail(succ);
+                int y = toplevel_y + y_wrt_toplevel;
+                
+                this.popup.move(x, y);
+                
+                this.popup.leave_notify_event.connect((w, e) => {
+                    this.hide_popup();
+                    return false;
+                });
+                
+                // It is possible that the popup will never get an enter (and
+                // therefore a leave) event, since the pointer could have
+                // moved on by the time the popup is mapped, or it could pop up
+                // in the wrong place.  So, we hide it if it hasn’t received an
+                // enter event within about one second.
+                this.popup_saw_enter_event = false;
+                this.popup.enter_notify_event.connect((w, e) => {
+                    this.popup_saw_enter_event = true;
+                    return false;
+                });
+                Timeout.add_seconds(1, () => {
+                    if (!this.popup_saw_enter_event) {
+                        this.hide_popup();
+                    }
+                    return false;  // Do not repeat this timeout
+                });
+                
+                this.popup.show();
+            }
+        }
+        return false;
+    }
+    
+    public override void size_request(out Gtk.Requisition requisition) {
+        // Request the same size as this.button even when it isn’t our child
+        // (because it is in this.popup).
+        this.button.size_request(out requisition);
+    }
+    
+    public override void size_allocate(Gdk.Rectangle allocation) {
+        base.size_allocate(allocation);
+        if (!this.is_popped_out) {
+            this.button.size_allocate(allocation);
+        }
+    }
+    
+    protected void hide_popup() {
+        if (this.is_popped_out) {
+            this.is_popped_out = false;
+            this.button.reparent(this);
+            this.popup.destroy();
+            this.popup = null;
+        }
+    }
+    
+    protected bool on_button_button_release_event(
+        Gtk.Widget widget, Gdk.EventButton event
+    ) {
+        // FIXME: If you click the button for the parent of a modal dialog, the
+        // focus stays on the dialog, but the parent’s button is activated.
+        
+        assert(this.window != null);
+        
+        if (event.button != 1) return false;
+        
+        var msg_ev = X.Event();
+        msg_ev.type = X.EventType.ClientMessage;
+        msg_ev.xclient.window = this.xwindow;
+        msg_ev.xclient.format = 32;
+        
+        if (button.active) {
+            // Iconify the corresponding toplevel window
+            
+            msg_ev.xclient.message_type =
+                Gdk.x11_get_xatom_by_name("WM_CHANGE_STATE");
+            msg_ev.xclient.data.l[0] = XFixes.IconicState;
+            msg_ev.xclient.data.l[1] = 0;  // Unused
+            msg_ev.xclient.data.l[2] = 0;  // Unused
+        }
+        else {
+            // Activate the corresponding toplevel window
+            
+            msg_ev.xclient.message_type =
+                Gdk.x11_get_xatom_by_name("_NET_ACTIVE_WINDOW");
+            msg_ev.xclient.data.l[0] = 2;  // Source (this program) is a pager
+            msg_ev.xclient.data.l[1] = event.time;  // Timestamp
+            msg_ev.xclient.data.l[2] =
+                (long) Gdk.x11_drawable_get_xid(this.get_toplevel().window);
+        }
+        msg_ev.xclient.data.l[3] = 0;  // Unused
+        msg_ev.xclient.data.l[4] = 0;  // Unused
+        
+        var xroot =
+            (X.Window) Gdk.x11_drawable_get_xid(this.get_root_window());
+        var xdisplay = Gdk.x11_display_get_xdisplay(this.get_display());
+        var status = XFixes.send_event(
+            xdisplay,
+            xroot, false,
+            X.EventMask.SubstructureNotifyMask
+                | X.EventMask.SubstructureRedirectMask,
+            msg_ev
+        ); warn_if_fail(status != 0);
+        
+        return false;
+    }
+    
+    // Emitted when the user uses this button to raise or minimize the
+    // corresponding window
+    //public signal void raise_window(X.Window xwindow);
+    //public signal void minimize_window(X.Window xwindow);
+    
+    // Forwarding stuff to this.button
+    
+    public bool active {
+        get { return this.button.active; }
+        set { this.button.active = value; }
+    }
+    
+    public unowned SList<Gtk.RadioButton>? get_group() {
+        return this.button.get_group();
+    }
 }
 
 class TaskList: Gtk.VBox {
@@ -528,26 +708,12 @@ class TaskList: Gtk.VBox {
             (ba, bb) => { return ba == bb; }
         );
     
-    HashTable<unowned WindowButton, ulong?> button_to_handler =
-        new HashTable<unowned WindowButton, ulong?> (null, null);
-    
     public TaskList() {
         Object(homogeneous: false);
     }
     
     construct {
         this.on_client_list_changed();
-    }
-    
-    public override void dispose() {
-        // Disconnect our handlers for window button toggled events and remove
-        // them from button_to_handler so they won’t get disconnected twice.
-        this.button_to_handler.foreach((b, h) => {
-            ((Gtk.RadioButton)b).disconnect((!) (ulong?)h);
-        });
-        this.button_to_handler.remove_all();
-        
-        base.dispose();
     }
     
     public override void realize() {
@@ -677,13 +843,7 @@ class TaskList: Gtk.VBox {
                 );
                 
                 button = new WindowButton(
-                    button != null ? button.get_group() : null
-                );
-                this.button_to_handler.insert(
-                    button,
-                    button.button_release_event.connect(
-                        this.on_window_button_button_release_event
-                    )
+                    button != null ? button.get_group() : null, window
                 );
                 this.xwindow_to_button.insert(window, button);
                 this.update_window_button_label(xdisplay, window);
@@ -774,13 +934,6 @@ class TaskList: Gtk.VBox {
                     this.xwindow_to_button.lookup(xwindow);
                 if (dead_button != null) {
                     this.xwindow_to_button.remove(xwindow);
-                    ulong? handler = this.button_to_handler.lookup(dead_button);
-                    if (handler != null) {
-                        dead_button.disconnect(handler);
-                        this.button_to_handler.remove(dead_button);
-                    }
-                    else warn_if_reached();
-                    
                     this.remove(dead_button);
                 }
                 else warn_if_reached();
@@ -807,15 +960,7 @@ class TaskList: Gtk.VBox {
             var xwindow = (X.Window) xwindow_arr[0];
             WindowButton? button = this.xwindow_to_button.lookup(xwindow);
             if (button != null) {
-                var handler = this.button_to_handler.lookup(button);
-                if (handler != null) {
-                    SignalHandler.block(button, handler);
-                }
-                else warn_if_reached();
                 button.active = true;
-                if (handler != null) {
-                    SignalHandler.unblock(button, handler);
-                }
             }
         }
     }
@@ -883,60 +1028,6 @@ class TaskList: Gtk.VBox {
         }
         
         button.wb_label = name ?? "Window 0x%lx".printf(xwindow);
-    }
-    
-    protected bool on_window_button_button_release_event(
-        Gtk.Widget widget, Gdk.EventButton event
-    ) {
-        // FIXME: If you click the button for the parent of a modal dialog, the
-        // focus stays on the dialog, but the parent’s button is activated.
-        
-        assert(this.window != null);
-        
-        if (event.button != 1) return false;
-        
-        var button = widget as WindowButton;
-        return_val_if_fail(button != null, false);
-        X.Window? xwindow = this.xwindow_to_button.ilookup(button);
-        return_val_if_fail(xwindow != null, false);
-        
-        var xroot =
-            (X.Window) Gdk.x11_drawable_get_xid(this.get_root_window());
-        var msg_ev = X.Event();
-        msg_ev.type = X.EventType.ClientMessage;
-        msg_ev.xclient.window = xwindow;
-        msg_ev.xclient.format = 32;
-        
-        if (button.active) {
-            // Iconify the corresponding toplevel window
-            
-            msg_ev.xclient.message_type =
-                Gdk.x11_get_xatom_by_name("WM_CHANGE_STATE");
-            msg_ev.xclient.data.l[0] = Fixes.X.IconicState;
-            msg_ev.xclient.data.l[1] = 0;  // Unused
-            msg_ev.xclient.data.l[2] = 0;  // Unused
-        }
-        else {
-            // Activate the corresponding toplevel window
-            
-            msg_ev.xclient.message_type = this.xatom__net_active_window;
-            msg_ev.xclient.data.l[0] = 2;  // Source (this program) is a pager
-            msg_ev.xclient.data.l[1] = event.time;  // Timestamp
-            msg_ev.xclient.data.l[2] =
-                (long) Gdk.x11_drawable_get_xid(this.window);
-        }
-        msg_ev.xclient.data.l[3] = 0;  // Unused
-        msg_ev.xclient.data.l[4] = 0;  // Unused
-        
-        var xdisplay = Gdk.x11_display_get_xdisplay(this.get_display());
-        xdisplay.send_event(
-            xroot, false,
-            X.EventMask.SubstructureNotifyMask
-                | X.EventMask.SubstructureRedirectMask,
-            ref msg_ev
-        );
-        
-        return false;
     }
 }
 
@@ -1048,10 +1139,15 @@ class Clock: Gtk.Label {
     
     protected bool on_timeout() {
         var time = new DateTime.now_local();
-        var time_str = time.format("%l:%M %P").chug();
-        var date_str = @"$(time.format("%b")) $(time.get_day_of_month())";
-        this.set_markup(@"<big><big>$time_str</big></big>\n$date_str");
-            // TODO: make format locale-sensitive or customizable
+        // TODO: This is horribly US-specific and non-customizable.
+        int hour = (time.get_hour()+23) % 12 + 1;
+        string minute = "%02d".printf(time.get_minute());
+        string ampm = time.format("%P");
+        string month = time.format("%b");
+        int dom = time.get_day_of_month();
+        this.set_markup(
+            @"<big><big>$hour:$minute $ampm</big></big>\n$month $dom"
+        );
         
         // Schedule this function to be called again in just over 60 seconds
         // (assuming it took less than 1 second to run…)
@@ -1181,6 +1277,25 @@ class Window: Gtk.Window {
 } // end namespace Gutter
 
 int main(string[] args) {
+    if (
+        Intl.bindtextdomain("gutter", "intl") == null
+            // TODO: Figure out where to actually install translations (to be
+            // done after we actually have translations)
+        && errno == Posix.ENOMEM
+            // It seems like we should continue in the case of other errors,
+            // since internationalization won’t work but the program may still
+            // be useful
+    ) {
+        error("%s", strerror(errno));
+    }
+    
+    if (
+        Intl.bind_textdomain_codeset("gutter", "UTF8") == null
+        && errno == Posix.ENOMEM
+    ) {
+        error("%s", strerror(errno));
+    }
+    
     Gtk.init(ref args);
     
     var window = new Gutter.Window();
