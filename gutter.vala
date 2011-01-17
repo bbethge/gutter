@@ -108,10 +108,10 @@ namespace Gutter {
 
 enum GetWindowPropertyResult {
     SUCCESS,
-    X_ERROR,
-    DOES_NOT_EXIST,
-    WRONG_TYPE,
-    WRONG_FORMAT
+    FAILURE,
+    BAD_WINDOW
+        // An invalid window isn’t really a failure because it’s nobody’s fault
+        // if the window got destroyed before you could retrieve the property
 }
 
 static GetWindowPropertyResult get_window_property(
@@ -122,15 +122,31 @@ static GetWindowPropertyResult get_window_property(
     X.Atom type,
     int format,
     out ulong count,
-    out void *data,
-    out int x_error
+    out void *data
 )
     // This is now just a helper for get_window_property{8,32}; avoid using it.
+    
+    // Nobody wants to say what is the correct way to handle the various
+    // possible outcomes of XGetWindowProperty.  This may well repeat the same
+    // (unspecified) mistakes that gdk_window_property_get made, but I don’t
+    // care.  It just factors out common code for many of the property
+    // retrievals in this program.
+    
+    // Specifically, it assumes that you want to pretend the property doesn’t
+    // exist if it has the wrong type or format, if the server ran out of
+    // memory, if this function makes wrong assumptions, or if you passed an
+    // invalid atom (though in these last two cases it logs an error).  The
+    // caller *is* notified if the window was invalid, because foreign
+    // windows can be destroyed at any time without anyone doing anything wrong,
+    // and it is impossible to know that a foreign window will still exist when
+    // the server receives the request unless it is the root window.
 {
     X.Atom actual_type;
     int actual_format;
     ulong remaining_bytes;
-    x_error = display.get_window_property(
+    
+    Gdk.error_trap_push();
+    int status = display.get_window_property(
         window,
         property,
         0L, long.MAX,
@@ -141,19 +157,38 @@ static GetWindowPropertyResult get_window_property(
         out remaining_bytes,
         out data
     );
-    if (x_error != X.Success) {
-        return GetWindowPropertyResult.X_ERROR;
+    // Flushing shouldn’t be necessary because this X request returns data.
+    int x_error = Gdk.error_trap_pop();
+    
+    if (unlikely(x_error != 0)) {
+        switch (x_error) {
+        case XFixes.BadWindow:
+            return GetWindowPropertyResult.BAD_WINDOW;
+        case XFixes.BadAlloc:
+            break;
+        case XFixes.BadAtom:
+            warning("get_window_property received invalid atom");
+            break;
+        case XFixes.BadValue:
+            warning("get_window_property sent invalid value to X server");
+            break;
+        default:
+            warning("XGetWindowProperty caused unexpected error");
+            break;
+        }
+        return GetWindowPropertyResult.FAILURE;
     }
-    if (actual_type == X.None) {
-        return GetWindowPropertyResult.DOES_NOT_EXIST;
-    }
-    if (actual_type != type) {
-        return GetWindowPropertyResult.WRONG_TYPE;
+    return_val_if_fail(
+        status == X.Success, GetWindowPropertyResult.FAILURE
+    );  // I think status == X.Success means no X error, so this should not fail
+    
+    if (actual_type == X.None || actual_type != type) {
+        return GetWindowPropertyResult.FAILURE;
     }
     if (actual_format != format) {
         X.free(data);
         data = null;
-        return GetWindowPropertyResult.WRONG_FORMAT;
+        return GetWindowPropertyResult.FAILURE;
     }
     return GetWindowPropertyResult.SUCCESS;
 }
@@ -352,15 +387,13 @@ static GetWindowPropertyResult get_window_property32(
     X.Atom property,
     bool @delete,
     X.Atom type,
-    out XArray32 data,
-    out int x_error
+    out XArray32 data
 ) {
     ulong count;
     void *data_ptr;
     GetWindowPropertyResult result;
     result = get_window_property(
-        display, window, property, @delete, type, 32, out count, out data_ptr,
-        out x_error
+        display, window, property, @delete, type, 32, out count, out data_ptr
     );
     data = new XArray32(count, data_ptr);
     return result;
@@ -372,15 +405,13 @@ static GetWindowPropertyResult get_window_property8(
     X.Atom property,
     bool @delete,
     X.Atom type,
-    out XArray8 data,
-    out int x_error
+    out XArray8 data
 ) {
     ulong count;
     void *data_ptr;
     GetWindowPropertyResult result;
     result = get_window_property(
-        display, window, property, @delete, type, 8, out count, out data_ptr,
-        out x_error
+        display, window, property, @delete, type, 8, out count, out data_ptr
     );
     data = new XArray8(count, data_ptr);
     return result;
@@ -614,8 +645,10 @@ class WindowButton: Gtk.Bin
     
     public override void size_allocate(Gdk.Rectangle allocation) {
         base.size_allocate(allocation);
-        if (!this.is_popped_out) {
-            this.button.size_allocate(allocation);
+        
+        Gtk.Widget? child = this.get_child();
+        if (child != null && child.visible) {
+            child.size_allocate(allocation);
         }
     }
     
@@ -678,11 +711,6 @@ class WindowButton: Gtk.Bin
         
         return false;
     }
-    
-    // Emitted when the user uses this button to raise or minimize the
-    // corresponding window
-    //public signal void raise_window(X.Window xwindow);
-    //public signal void minimize_window(X.Window xwindow);
     
     // Forwarding stuff to this.button
     
@@ -763,7 +791,6 @@ class TaskList: Gtk.VBox {
         X.Display xdisplay = Gdk.x11_get_default_xdisplay();
         X.Window xroot = Gdk.x11_get_default_root_xwindow();
         XArray32 windows;
-        int xerror;
         switch (
             get_window_property32(
                 xdisplay,
@@ -771,30 +798,18 @@ class TaskList: Gtk.VBox {
                 this.xatom__net_client_list,
                 false,
                 X.XA_WINDOW,
-                out windows,
-                out xerror
+                out windows
             )
         ) {
-        case GetWindowPropertyResult.X_ERROR:
-            warning("Couldn't retrieve window list: X error %d", xerror);
+        case GetWindowPropertyResult.BAD_WINDOW:
+            warning("Root window is invalid?");
             break;
-        case GetWindowPropertyResult.DOES_NOT_EXIST:
-            warning(
-                "Couldn't retrieve window list: "
-                +"property _NET_CLIENT_LIST does not exist"
-            );
-            break;
-        case GetWindowPropertyResult.WRONG_TYPE:
-            warning(
-                "Couldn't retrieve window list: "
-                +"property _NET_CLIENT_LIST has wrong type"
-            );
-            break;
-        case GetWindowPropertyResult.WRONG_FORMAT:
-            warning(
-                "Couldn't retrieve window list: "
-                +"property _NET_CLIENT_LIST has wrong format"
-            );
+        case GetWindowPropertyResult.FAILURE:
+            warning(_(
+                "Couldn't retrieve window list; "
+                +"possibly window manager is not WM Spec 1.3 compliant, "
+                +"or there is no window manager."
+            ));
             break;
         case GetWindowPropertyResult.SUCCESS:
             int final_icon_w, final_icon_h;
@@ -813,8 +828,7 @@ class TaskList: Gtk.VBox {
                         Gdk.x11_get_xatom_by_name("_NET_WM_STATE"),
                         false,
                         X.XA_ATOM,
-                        out state,
-                        out xerror
+                        out state
                     ) == GetWindowPropertyResult.SUCCESS
                     &&
                     Gdk.x11_get_xatom_by_name("_NET_WM_STATE_SKIP_TASKBAR")
@@ -856,8 +870,7 @@ class TaskList: Gtk.VBox {
                         Gdk.x11_get_xatom_by_name("_NET_WM_ICON"),
                         false,
                         X.XA_CARDINAL,
-                        out icon_data,
-                        out xerror
+                        out icon_data
                     ) == GetWindowPropertyResult.SUCCESS
                     && icon_data.length > 0
                 ) {
@@ -944,7 +957,6 @@ class TaskList: Gtk.VBox {
     
     protected void on_active_window_changed() {
         XArray32 xwindow_arr;
-        int xerror;
         if (
             get_window_property32(
                 Gdk.x11_get_default_xdisplay(),
@@ -952,8 +964,7 @@ class TaskList: Gtk.VBox {
                 this.xatom__net_active_window,
                 false,
                 X.XA_WINDOW,
-                out xwindow_arr,
-                out xerror
+                out xwindow_arr
             ) == GetWindowPropertyResult.SUCCESS
             && xwindow_arr.length > 0
         ) {
@@ -976,6 +987,10 @@ class TaskList: Gtk.VBox {
             ||
             xevent.xproperty.atom == X.XA_WM_NAME
         ) {
+            // FIXME: sometimes we get property change events when a window is
+            // destroyed, and then update_window_button_label causes a BadWindow
+            // error when trying to retrieve the new value of the property.
+            // Possibly fixed.
             this.update_window_button_label(
                 xevent.xproperty.display, xevent.xproperty.window
             );
@@ -989,42 +1004,31 @@ class TaskList: Gtk.VBox {
         WindowButton? button = this.xwindow_to_button.lookup(xwindow);
         return_if_fail(button != null);
         
-        XArray8 name_arr;
         X.Atom xatom_utf8_string = Gdk.x11_get_xatom_by_name("UTF8_STRING");
+        X.Atom props[6] = {
+            Gdk.x11_get_xatom_by_name("_NET_WM_VISIBLE_NAME"),
+                xatom_utf8_string,
+            Gdk.x11_get_xatom_by_name("_NET_WM_NAME"), xatom_utf8_string,
+            X.XA_WM_NAME, Gdk.x11_get_xatom_by_name("STRING")
+        };
+        
+        XArray8 name_arr;
         unowned string? name = null;
-        int xerror;
-        if (
-            get_window_property8(
+        for (size_t i = 0; i < props.length; i += 2) {
+            GetWindowPropertyResult gwp_res;
+            gwp_res = get_window_property8(
                 xdisplay,
                 xwindow,
-                Gdk.x11_get_xatom_by_name("_NET_WM_VISIBLE_NAME"),
+                props[i],
                 false,
-                xatom_utf8_string,
-                out name_arr,
-                out xerror
-            ) == GetWindowPropertyResult.SUCCESS
-            ||
-            get_window_property8(
-                xdisplay,
-                xwindow,
-                Gdk.x11_get_xatom_by_name("_NET_WM_NAME"),
-                false,
-                xatom_utf8_string,
-                out name_arr,
-                out xerror
-            ) == GetWindowPropertyResult.SUCCESS
-            ||
-            get_window_property8(
-                xdisplay,
-                xwindow,
-                X.XA_WM_NAME,
-                false,
-                Gdk.x11_get_xatom_by_name("STRING"),
-                out name_arr,
-                out xerror
-            ) == GetWindowPropertyResult.SUCCESS
-        ) {
-            name = name_arr.to_string();
+                props[i+1],
+                out name_arr
+            );
+            if (gwp_res == GetWindowPropertyResult.BAD_WINDOW) return;
+            if (gwp_res == GetWindowPropertyResult.SUCCESS) {
+                name = name_arr.to_string();
+                break;
+            }
         }
         
         button.wb_label = name ?? "Window 0x%lx".printf(xwindow);
@@ -1161,6 +1165,184 @@ class Clock: Gtk.Label {
     }
 }
 
+class Menu: Gtk.MenuBar {
+    protected Garcon.Menu? menu;
+    
+    construct {
+        this.set_pack_direction(Gtk.PackDirection.TTB);
+        
+        this.menu = new Garcon.Menu.applications();
+        try {
+            this.menu.load(null);
+        }
+        catch (Error e) {
+            warning(_("Error while loading applications menu: %s"), e.message);
+            this.menu = null;
+        }
+        
+        var appl_item = new Gtk.MenuItem.with_label(_("Applications"));
+        appl_item.show();
+        this.append(appl_item);
+        
+        var appl_menu = new Gtk.Menu();
+        appl_item.set_submenu(appl_menu);
+        
+        if (this.menu != null) {
+            build_menu(appl_menu, this.menu);
+        }
+    }
+    
+    protected static void build_menu(Gtk.Menu menu, Garcon.Menu garcon_menu) {
+        foreach (var elt in garcon_menu.get_elements()) {
+            if (!elt.get_visible()) continue;
+            
+            Gtk.MenuItem item;
+            string? icon_name = elt.get_icon_name();
+            Gtk.Image? image = null;
+            if (icon_name != null && icon_name.length > 0) {
+                if (icon_name[0] == '/') {
+                    int w, h;
+                    Gtk.icon_size_lookup(Gtk.IconSize.MENU, out w, out h);
+                    try {
+                        var pixbuf =
+                            new Gdk.Pixbuf.from_file_at_size(icon_name, w, h);
+                        image = new Gtk.Image.from_pixbuf(pixbuf);
+                    }
+                    catch (Error err) {
+                        // Ignore, leaving image == null
+                    }
+                }
+                else {
+                    image = new Gtk.Image.from_icon_name(
+                        icon_name, Gtk.IconSize.MENU
+                    );
+                }
+            }
+            if (image != null) {
+                var img_item = new Gtk.ImageMenuItem.with_label(elt.get_name());
+                img_item.image = image;
+                item = img_item;
+            }
+            else {
+                item = new Gtk.MenuItem.with_label(elt.get_name());
+            }
+            if (elt is Garcon.Menu) {
+                var submenu = new Gtk.Menu();
+                build_menu(submenu, (Garcon.Menu)elt);
+                item.set_submenu(submenu);
+            }
+            //else if (elt is Garcon.MenuItem) {
+            //    // FIXME: When we make a closure that references ‘elt’, the data
+            //    // block for that closure never gets initialized.
+            //    item.activate.connect((mi) => {
+            //        on_menu_item_activate(mi, (Garcon.MenuItem)elt);
+            //    });
+            //}
+            item.show();
+            menu.append(item);
+        }
+    }
+    
+    static void on_menu_item_activate(
+        Gtk.MenuItem gtk_item, Garcon.MenuItem item
+    ) {
+        return_if_fail(item.path != null);
+        
+        string[] args;
+        try {
+            Shell.parse_argv(item.path, out args);
+        }
+        catch (ShellError err) {
+            // TODO: Graphical error message?  (See also every other error
+            // handler in this function.)
+            warning(
+                "Unable to parse command line ‘%s’: %s", item.path, err.message
+            );
+            return;
+        }
+        
+        Regex percent_escape;
+        try {
+            percent_escape = new Regex("%.");
+        }
+        catch (RegexError err) {
+            return_if_reached();
+        }
+        
+        string?[] new_args = new string[args.length];
+        assert(new_args.length == 0);  // TODO: Remove
+        foreach (var arg in args) {
+            if (arg == "%F" || arg == "%U") continue;  // Ignore these
+            if (arg == "%i") {
+                if (item.icon_name != null) {
+                    new_args += "--icon";
+                    new_args += item.icon_name;
+                }
+                continue;
+            }
+            
+            bool err = false;
+            string? new_arg;
+            try {
+                new_arg = percent_escape.replace_eval(
+                    arg, arg.length, 0, 0,
+                    (match, result) => {
+                        switch (match.fetch(0)[1]) {
+                        case '%':
+                            result.append_c('%');
+                            break;
+                        case 'f':
+                        case 'u':
+                        case 'd':
+                        case 'D':
+                        case 'n':
+                        case 'N':
+                        case 'v':
+                        case 'm':
+                            // Ignore these
+                            break;
+                        case 'c':
+                            result.append(item.name);
+                            break;
+                        case 'k':
+                            result.append(item.file.get_path());
+                            break;
+                        default:
+                            warning("Invalid field code in command line");
+                            err = true;
+                            return true;
+                        }
+                        return false;
+                    }
+                );
+            }
+            catch (RegexError err) {
+                // TODO: More error reporting?
+                return;
+            }
+            if (err) return;
+            new_args += new_arg;
+        }
+        new_args += null;
+        
+        int pid;
+        try {
+            Gdk.spawn_on_screen(
+                gtk_item.get_screen(),
+                item.path,
+                new_args,
+                null,
+                SpawnFlags.SEARCH_PATH | SpawnFlags.STDOUT_TO_DEV_NULL,
+                null,
+                out pid
+            );
+        }
+        catch (Error err) {
+            warning("Error launching command: %s", err.message);
+        }
+    }
+}
+
 class Window: Gtk.Window {
     protected ulong width = 150;
     
@@ -1171,7 +1353,7 @@ class Window: Gtk.Window {
     protected Side side = Side.RIGHT;
     
     public Window() {
-        Object(type: Gtk.WindowType.TOPLEVEL);
+        Object(type: Gtk.WindowType.TOPLEVEL, app_paintable: true);
     }
     
     construct {
@@ -1179,17 +1361,17 @@ class Window: Gtk.Window {
         this.gravity =
             this.side == Side.RIGHT
             ? Gdk.Gravity.NORTH_EAST : Gdk.Gravity.NORTH_WEST;
+        this.type_hint = Gdk.WindowTypeHint.DOCK;
         this.skip_taskbar_hint = true;
         this.skip_pager_hint = true;
         
-        var frame = new Gtk.Frame(null);
-        frame.shadow_type = Gtk.ShadowType.OUT;
-        frame.show();
-        this.add(frame);
-        
         var vbox = new Gtk.VBox(false, 5);  // TODO: remove hard-coded size
         vbox.show();
-        frame.add(vbox);
+        this.add(vbox);
+        
+        var menu = new Menu();
+        menu.show();
+        vbox.pack_start(menu, false, false, 0);
         
         var task_list = new Gutter.TaskList();
         task_list.show();
@@ -1223,10 +1405,30 @@ class Window: Gtk.Window {
         hbox.pack_end(quit, false, false, 0);
     }
     
+    // Since we set a hard-coded default size, I don’t think it makes much
+    // difference whether we override size_request to request the extra width
+    // from the side shadow.
+    
+    public override void size_allocate(Gdk.Rectangle allocation)
+        // The Vala bindings think the argument to this function is a
+        // Gdk.Rectangle, but it really should be a Gtk.Allocation.  We can
+        // probably ignore this since the two structures are identical.
+    {
+        base.size_allocate(allocation);
+        
+        Gtk.Widget? child = this.get_child();
+        if (child != null && child.visible) {
+            var child_alloc = Gdk.Rectangle();
+            child_alloc.x = this.side == Side.RIGHT ? this.style.xthickness : 0;
+            child_alloc.y = 0;
+            child_alloc.width = allocation.width - this.style.xthickness;
+            child_alloc.height = allocation.height;
+            child.size_allocate(child_alloc);
+        }
+    }
+    
     public override void realize() {
         base.realize();
-        
-        this.window.set_type_hint(Gdk.WindowTypeHint.DOCK);
         
         Gdk.Screen screen = this.get_screen();
         
@@ -1271,6 +1473,29 @@ class Window: Gtk.Window {
         );
         
         return result;
+    }
+    
+    public override bool expose_event(Gdk.EventExpose event) {
+        Gtk.Allocation allocation;
+        this.get_allocation(out allocation);
+        
+        var clip = Gdk.Rectangle();
+        clip.x = allocation.x; clip.y = allocation.y;
+        clip.width = allocation.width; clip.height = allocation.height;
+        
+        Gtk.paint_shadow(
+            this.style,
+            this.get_window(),
+            this.get_state(),
+            Gtk.ShadowType.OUT,
+            clip,
+            this,
+            "panel",
+            this.side == Side.RIGHT ? 0 : -allocation.width, -allocation.height,
+            2*allocation.width, 3*allocation.height
+        );
+        
+        return base.expose_event(event);
     }
 }
 

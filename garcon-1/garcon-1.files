@@ -1,0 +1,3 @@
+include/garcon-1/
+lib/libgarcon-1.so
+lib64/libgarcon-1.so
