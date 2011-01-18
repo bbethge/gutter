@@ -1,4 +1,4 @@
-VALAFLAGS = --Xcc=-DGETTEXT_PACKAGE=\"gutter\"
+VALAFLAGS += --Xcc=-DGETTEXT_PACKAGE=\"gutter\" --Xcc=-I.
 
 ifndef NODEBUG
 	VALAFLAGS += -g
@@ -6,15 +6,18 @@ else
 	VALAFLAGS += --Xcc=-O3
 endif
 
-VALALIBS = --vapidir=/usr/share/vala/vapi --vapidir=. --pkg=fixes --pkg=x11 \
+VALALIBS = --vapidir=/usr/share/vala/vapi --vapidir=. --pkg=x11 \
 	--pkg=gdk-2.0 --pkg=gdk-x11-2.0 --pkg=gtk+-2.0 --pkg=pango --pkg=gee-1.0 \
-	--pkg=posix --pkg=garcon-1 --pkg=gio-2.0
+	--pkg=posix --pkg=gio-2.0
 
-gutter: gutter.c
-	valac $(VALAFLAGS) $(VALALIBS) $^
+modules = main window menu task-list bimap \
+	get-window-property x-event-filter-manager status-area \
+	clock
 
-%.c: %.vala garcon-1.vapi fixes.vapi
-	valac -C $(VALAFLAGS) $(VALALIBS) $<
+gutter: $(modules:%=%.vala) garcon-1.vapi fixes.vapi
+	valac $(VALAFLAGS) $(VALALIBS) \
+		$(patsubst %.vapi,--pkg=%,$(filter %.vapi,$^)) \
+		-o $@ $(filter %.vala,$^)
 
 garcon-1.vapi: garcon-1/garcon-1.gi garcon-1/garcon-1.metadata
 	vapigen --library garcon-1 --pkg gio-2.0 garcon-1/garcon-1.gi
@@ -24,7 +27,7 @@ garcon-1/garcon-1.gi: garcon-1/garcon-1.files garcon-1/garcon-1.defines garcon-1
 
 .PHONY: clean
 clean:
-	$(RM) gutter gutter.c
+	$(RM) gutter
 	@echo "To also clean generated .vapi files, do 'make clean-vapi'."
 
 .PHONY: clean-vapi
