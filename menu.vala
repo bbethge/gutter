@@ -66,13 +66,14 @@ public class Menu: Gtk.MenuBar {
                 build_menu(submenu, (Garcon.Menu)elt);
                 item.set_submenu(submenu);
             }
-            //else if (elt is Garcon.MenuItem) {
-            //    // FIXME: When we make a closure that references ‘elt’, the data
-            //    // block for that closure never gets initialized.
-            //    item.activate.connect((mi) => {
-            //        on_menu_item_activate(mi, (Garcon.MenuItem)elt);
-            //    });
-            //}
+            else if (elt is Garcon.MenuItem) {
+                // FIXME: When we make a closure that references ‘elt’, the data
+                // block for that closure never gets initialized.
+                var garcon_mi = (Garcon.MenuItem) elt;
+                item.activate.connect((mi) => {
+                    on_menu_item_activate(mi, garcon_mi);
+                });
+            }
             item.show();
             menu.append(item);
         }
@@ -81,31 +82,31 @@ public class Menu: Gtk.MenuBar {
     static void on_menu_item_activate(
         Gtk.MenuItem gtk_item, Garcon.MenuItem item
     ) {
-        return_if_fail(item.path != null);
+        return_if_fail(item.command != null);
         
         string[] args;
         try {
-            Shell.parse_argv(item.path, out args);
+            Shell.parse_argv(item.command, out args);
         }
         catch (ShellError err) {
             // TODO: Graphical error message?  (See also every other error
             // handler in this function.)
             warning(
-                "Unable to parse command line ‘%s’: %s", item.path, err.message
+                "Unable to parse command line ‘%s’: %s",
+                item.command, err.message
             );
             return;
         }
         
-        Regex percent_escape;
-        try {
-            percent_escape = new Regex("%.");
-        }
-        catch (RegexError err) {
-            return_if_reached();
-        }
+        //Regex percent_escape;
+        //try {
+        //    percent_escape = new Regex("%.");
+        //}
+        //catch (RegexError err) {
+        //    return_if_reached();
+        //}
         
-        string?[] new_args = new string[args.length];
-        assert(new_args.length == 0);  // TODO: Remove
+        string?[] new_args = new string[0];
         foreach (var arg in args) {
             if (arg == "%F" || arg == "%U") continue;  // Ignore these
             if (arg == "%i") {
@@ -116,47 +117,88 @@ public class Menu: Gtk.MenuBar {
                 continue;
             }
             
-            bool err = false;
-            string? new_arg;
-            try {
-                new_arg = percent_escape.replace_eval(
-                    arg, arg.length, 0, 0,
-                    (match, result) => {
-                        switch (match.fetch(0)[1]) {
-                        case '%':
-                            result.append_c('%');
-                            break;
-                        case 'f':
-                        case 'u':
-                        case 'd':
-                        case 'D':
-                        case 'n':
-                        case 'N':
-                        case 'v':
-                        case 'm':
-                            // Ignore these
-                            break;
-                        case 'c':
-                            result.append(item.name);
-                            break;
-                        case 'k':
-                            result.append(item.file.get_path());
-                            break;
-                        default:
-                            warning("Invalid field code in command line");
-                            err = true;
-                            return true;
-                        }
-                        return false;
-                    }
+            unowned string rem = arg;
+            var new_arg = new StringBuilder.sized(arg.length);
+            while (rem != "") {
+                var next_percent = rem.str("%");
+                if (next_percent == null) {
+                    new_arg.append(rem);
+                    break;
+                }
+                new_arg.append_len(
+                    rem, (ssize_t) ((char*)next_percent-(char*)rem)
                 );
+                rem = next_percent.next_char();
+                if (rem == "") break;
+                
+                switch (rem[0]) {
+                case '%':
+                    new_arg.append_c('%');
+                    break;
+                case 'f':
+                case 'u':
+                case 'd':
+                case 'D':
+                case 'n':
+                case 'N':
+                case 'v':
+                case 'm':
+                    // Ignore these
+                    break;
+                case 'c':
+                    new_arg.append(item.name);
+                    break;
+                case 'k':
+                    new_arg.append(item.file.get_path());
+                    break;
+                default:
+                    warning("Invalid field code in command line");
+                    return;
+                }
+                
+                rem = rem.next_char();
             }
-            catch (RegexError err) {
-                // TODO: More error reporting?
-                return;
-            }
-            if (err) return;
-            new_args += new_arg;
+            //bool err = false;
+            //string? new_arg;
+            //try {
+            //    new_arg = percent_escape.replace_eval(
+            //        arg, arg.length, 0, 0,
+            //        (match, result) => {
+            //            switch (match.fetch(0)[1]) {
+            //            case '%':
+            //                result.append_c('%');
+            //                break;
+            //            case 'f':
+            //            case 'u':
+            //            case 'd':
+            //            case 'D':
+            //            case 'n':
+            //            case 'N':
+            //            case 'v':
+            //            case 'm':
+            //                // Ignore these
+            //                break;
+            //            case 'c':
+            //                result.append(item.name);
+            //                break;
+            //            case 'k':
+            //                result.append(item.file.get_path());
+            //                break;
+            //            default:
+            //                warning("Invalid field code in command line");
+            //                err = true;
+            //                return true;
+            //            }
+            //            return false;
+            //        }
+            //    );
+            //}
+            //catch (RegexError err) {
+            //    // TODO: More error reporting?
+            //    return;
+            //}
+            //if (err) return;
+            new_args += new_arg.str;
         }
         new_args += null;
         

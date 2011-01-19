@@ -1,4 +1,5 @@
-vala_flags = $(VALAFLAGS) --Xcc=-DGETTEXT_PACKAGE=\"gutter\" --Xcc=-I.
+vala_flags = $(VALAFLAGS) --save-temps \
+	--Xcc=-DGETTEXT_PACKAGE=\"gutter\" --Xcc=-I.
 
 ifndef NODEBUG
 	vala_flags += --debug
@@ -27,7 +28,7 @@ garcon-1/garcon-1.gi: garcon-1/garcon-1.files garcon-1/garcon-1.defines garcon-1
 
 .PHONY: clean
 clean:
-	$(RM) gutter
+	$(RM) gutter $(modules:%=%.c)
 	@echo "To also clean generated .vapi files, do 'make clean-vapi'."
 
 .PHONY: clean-vapi
