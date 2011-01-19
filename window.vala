@@ -42,6 +42,14 @@ public class Window: Gtk.Window {
         stat_area.show();
         stat_area_align.add(stat_area);
         
+        var monitor_align = new Gtk.Alignment(0.5f, 0.0f, 0.0f, 0.0f);
+        monitor_align.show();
+        vbox.pack_start(monitor_align, false, false, 0);
+        
+        var monitor = new Monitor();
+        monitor.show();
+        monitor_align.add(monitor);
+        
         var hbox = new Gtk.HBox(false, 0);
         hbox.show();
         vbox.pack_end(hbox, false, true, 0);

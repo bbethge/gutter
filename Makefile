@@ -12,7 +12,7 @@ vala_libs = --vapidir=/usr/share/vala/vapi --vapidir=. --pkg=x11 \
 	--pkg=posix --pkg=gio-2.0
 
 modules = main window menu task-list bimap \
-	get-window-property x-event-filter-manager status-area \
+	get-window-property x-event-filter-manager status-area monitor \
 	clock
 
 gutter: $(modules:%=%.vala) garcon-1.vapi fixes.vapi
