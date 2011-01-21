@@ -1,8 +1,7 @@
-vala_flags = $(VALAFLAGS) --save-temps \
-	--Xcc=-DGETTEXT_PACKAGE=\"gutter\" --Xcc=-I.
+vala_flags = $(VALAFLAGS) --Xcc=-DGETTEXT_PACKAGE=\"gutter\" --Xcc=-I.
 
 ifndef NODEBUG
-	vala_flags += --debug
+	vala_flags += --debug --save-temps
 else
 	vala_flags += --Xcc=-O3
 endif
