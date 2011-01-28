@@ -1,3 +1,4 @@
+VALAC = valac
 vala_flags = $(VALAFLAGS) --Xcc=-DGETTEXT_PACKAGE=\"gutter\" --Xcc=-I.
 
 ifndef NODEBUG
@@ -15,7 +16,7 @@ modules = main window menu task-list bimap \
 	clock
 
 gutter: $(modules:%=%.vala) garcon-1.vapi fixes.vapi
-	valac $(vala_flags) $(vala_libs) \
+	$(VALAC) $(vala_flags) $(vala_libs) \
 		$(patsubst %.vapi,--pkg=%,$(filter %.vapi,$^)) \
 		-o $@ $(filter %.vala,$^)
 
@@ -38,6 +39,7 @@ clean-vapi:
 help:
 	@echo "Useful variables:"
 	@echo "    NODEBUG    If set, optimize instead of including debugging info"
+	@echo "    VALAC      Alternate Vala compiler to use"
 	@echo "    VALAFLAGS  Extra flags to pass to the Vala compiler"
 	@echo
 	@echo "Special targets:"
