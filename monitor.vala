@@ -1,6 +1,6 @@
 namespace Gutter {
 
-class Monitor: Gtk.HBox
+public class Monitor: Gtk.HBox
     // A widget to display system resource usage
 {
     protected Gtk.ProgressBar cpu = new Gtk.ProgressBar();
@@ -166,7 +166,7 @@ class Monitor: Gtk.HBox
     }
 }
 
-class LogarithmicIndicator: Gtk.ProgressBar {
+protected class LogarithmicIndicator: Gtk.ProgressBar {
     public double indicated_value {
         get { return this._value; }
         set {
@@ -180,17 +180,22 @@ class LogarithmicIndicator: Gtk.ProgressBar {
                     double.min(1.0, Math.exp(Math.LN10 * (log_val-level-1)));
                     // (exp10 is less standard than log10)
                 this.modify_bg(Gtk.StateType.SELECTED, colors[level]);
+                this.modify_fg(Gtk.StateType.NORMAL, colors[level]);
                 if (level > 0) {
                     this.modify_bg(Gtk.StateType.NORMAL, colors[level-1]);
+                    this.modify_fg(Gtk.StateType.SELECTED, colors[level-1]);
                 }
                 else {
                     this.modify_bg(Gtk.StateType.NORMAL, null);
+                    this.modify_fg(Gtk.StateType.SELECTED, null);
                 }
             }
             else {
                 this.fraction = 0.0;
                 this.modify_bg(Gtk.StateType.SELECTED, null);
+                this.modify_fg(Gtk.StateType.SELECTED, null);
                 this.modify_bg(Gtk.StateType.NORMAL, null);
+                this.modify_fg(Gtk.StateType.NORMAL, null);
             }
         }
     }
