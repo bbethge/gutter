@@ -1,34 +1,77 @@
-VALAC = valac
-vala_flags = $(VALAFLAGS) --Xcc=-DGETTEXT_PACKAGE=\"gutter\" --Xcc=-I.
+vala_bindir = $(if $(VALA_BINDIR),$(abspath $(VALA_BINDIR))/)
+VALAC = $(vala_bindir)valac
+VAPIGEN = $(vala_bindir)vapigen
+VALA_GEN_INTROSPECT = $(vala_bindir)vala-gen-introspect
+VALACFLAGS = --debug
+CFLAGS = -g
 
-ifndef NODEBUG
-	vala_flags += --debug --save-temps
-else
-	vala_flags += --Xcc=-O3
-endif
+valac_flags = --vapidir=.
+cc_flags = -DGETTEXT_PACKAGE=\"gutter\" -I.
 
-vala_libs = --vapidir=/usr/share/vala/vapi --vapidir=. --pkg=x11 \
-	--pkg=gdk-2.0 --pkg=gdk-x11-2.0 --pkg=gtk+-2.0 --pkg=pango --pkg=gee-1.0 \
-	--pkg=posix --pkg=gio-2.0
+main_deps = window gtk+-2.0
+window_deps = menu task-list status-area monitor clock gdk-2.0 gtk+-2.0
+menu_deps = garcon-1 gdk-2.0 gtk+-2.0
+task_list_deps = bimap get-window-property x-event-filter-manager \
+	fixes x11 gdk-2.0 gdk-x11-2.0 gtk+-2.0
+get_window_property_deps = fixes x11 gdk-2.0 gdk-x11-2.0
+x_event_filter_manager_deps = gee-1.0 x11 gdk-2.0 gdk-x11-2.0
+status_area_deps = x11 gdk-2.0 gdk-x11-2.0 gtk+-2.0
+monitor_deps = posix gdk-2.0 gtk+-2.0
+clock_deps = pango gtk+-2.0
 
-modules = main window menu task-list bimap \
-	get-window-property x-event-filter-manager status-area monitor \
-	clock
+expand_deps =                                              \
+	$(sort                                                 \
+		$(foreach mod,$($(subst -,_,$(1))_deps),           \
+			$(mod) $(call expand_deps,$(subst -,_,$(mod))) \
+		)                                                  \
+	)
 
-gutter: $(modules:%=%.vala) garcon-1.vapi fixes.vapi
-	$(VALAC) $(vala_flags) $(vala_libs) \
-		$(patsubst %.vapi,--pkg=%,$(filter %.vapi,$^)) \
-		-o $@ $(filter %.vala,$^)
+modules := \
+	$(filter main $(call expand_deps,main),$(basename $(wildcard *.vala)))
+packages := $(filter-out $(modules),$(call expand_deps,main))
+libraries := $(filter $(shell pkg-config --list-all),$(packages))
+local_packages = garcon-1 fixes
+
+all: gutter
+
+gutter: $(modules:%=%.o)
+	$(CC) -o gutter $(shell pkg-config --libs $(libraries)) $(LDFLAGS) \
+		$(modules:%=%.o)
+
+define module_rules =
+$(subst -,_,$(1))_full_deps := $$(call expand_deps,$(1))
+$(subst -,_,$(1))_mods := $$(filter $$(modules),$$($(subst -,_,$(1))_full_deps))
+$(subst -,_,$(1))_pkgs := \
+	$$(filter-out $(modules),$$($(subst -,_,$(1))_full_deps))
+$(subst -,_,$(1))_libs := glib-2.0 gobject-2.0 \
+	$$(filter $$($(subst -,_,$(1))_pkgs),$$(libraries))
+
+$(1).c $(1).h $(1).vapi: $(1).vala \
+		$$(addsuffix .vapi,$$($(subst -,_,$(1))_mods) $$(filter $$(local_packages),$$($(subst -,_,$(1))_pkgs)))
+	$$(VALAC) -C -o $(1).c -H $(1).h --vapi=$(1).vapi $$(valac_flags) \
+		$$(addprefix --pkg=,$$($(subst -,_,$(1))_mods) $$($(subst -,_,$(1))_pkgs)) $$(VALACFLAGS) \
+		$(1).vala
+
+$(1).o: $(1).c $(1).h $$($(subst -,_,$(1))_mods:%=%.h)
+	$$(CC) -c -o $(1).o $$(cc_flags) \
+		$$(if $$(strip $$($(subst -,_,$(1))_libs)),$$(shell pkg-config --cflags $$($(subst -,_,$(1))_libs))) \
+		$$(CPPFLAGS) $$(CFLAGS) $(1).c
+
+endef
+
+$(foreach mod,$(modules),$(eval $(call module_rules,$(mod))))
 
 garcon-1.vapi: garcon-1/garcon-1.gi garcon-1/garcon-1.metadata
-	vapigen --library garcon-1 --pkg gio-2.0 garcon-1/garcon-1.gi
+	$(VAPIGEN) --library garcon-1 --pkg gio-2.0 garcon-1/garcon-1.gi
 
-garcon-1/garcon-1.gi: garcon-1/garcon-1.files garcon-1/garcon-1.defines garcon-1/garcon-1.namespace
-	vala-gen-introspect garcon-1 garcon-1
+garcon-1/garcon-1.gi: garcon-1/garcon-1.files garcon-1/garcon-1.defines \
+		garcon-1/garcon-1.namespace
+	$(VALA_GEN_INTROSPECT) garcon-1 garcon-1
 
 .PHONY: clean
 clean:
-	$(RM) gutter $(modules:%=%.c)
+	$(RM) gutter $(modules:%=%.c) $(modules:%=%.h) $(modules:%=%.vapi) \
+		$(modules:%=%.o)
 	@echo "To also clean generated .vapi files, do 'make clean-vapi'."
 
 .PHONY: clean-vapi
@@ -38,11 +81,19 @@ clean-vapi:
 .PHONY: help
 help:
 	@echo "Useful variables:"
-	@echo "    NODEBUG    If set, optimize instead of including debugging info"
-	@echo "    VALAC      Alternate Vala compiler to use"
-	@echo "    VALAFLAGS  Extra flags to pass to the Vala compiler"
+	@echo "    VALA_BINDIR  Directory where Vala tools are installed"
+	@echo "    VALAC        Alternate Vala compiler to use (overrides VALA_BINDIR)"
+	@echo "    VALACFLAGS   Extra flags to pass to the Vala compiler (default --debug)"
+	@echo "    CC           Alternate C compiler to use"
+	@echo "    CPPFLAGS     Extra flags to pass to the C preprocessor"
+	@echo "    CFLAGS       Extra flags to pass to the C compiler (default -g)"
+	@echo "    LDFLAGS      Extra flags to pass to the linker"
+	@echo "    VAPIGEN      Alternate 'vapigen' to use (overrides VALA_BINDIR)"
+	@echo "    VALA_GEN_INTROSPECT"
+	@echo "                 Alternate 'vala-gen-introspect' to use (overrides VALA_BINDIR)"
 	@echo
 	@echo "Special targets:"
+	@echo "    all         Compile everything (i.e., just 'gutter')"
 	@echo "    clean       Remove generated files, except for custom Vala bindings"
 	@echo "    clean-vapi  Remove generated custom Vala bindings"
 	@echo "    help        Show this help"

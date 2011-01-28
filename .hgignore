@@ -1,4 +1,3 @@
-gutter
-garcon-1.vapi
-garcon-1/garcon-1.gi
-.+.c
+^gutter$
+^garcon-1/garcon-1\.gi$
+\.(c|h|vapi|o)$
