@@ -28,7 +28,13 @@ public class Menu: Gtk.MenuBar {
     }
     
     protected static void build_menu(Gtk.Menu menu, Garcon.Menu garcon_menu) {
-        foreach (var elt in garcon_menu.get_elements()) {
+        var elts = garcon_menu.get_elements().copy();
+        elts.sort((e1, e2) => {
+            return
+                ((Garcon.MenuElement)e1).get_name()
+                    .collate(((Garcon.MenuElement)e2).get_name());
+        });
+        foreach (var elt in elts) {
             if (!elt.get_visible()) continue;
             
             Gtk.MenuItem item;
