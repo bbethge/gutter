@@ -81,7 +81,8 @@ public class Monitor: Gtk.HBox
             ulong new_cpu_time = get_cpu_time();
             if (new_cpu_time > 0) {
                 this.cpu.fraction =
-                    (double)(new_cpu_time-this.cpu_time) / user_hz / interval;
+                    ((double)(new_cpu_time-this.cpu_time) / user_hz / interval)
+                        .clamp(0.0, 1.0);
                 this.cpu_time = new_cpu_time;
             }
             
@@ -93,10 +94,12 @@ public class Monitor: Gtk.HBox
             ulong new_rx_bytes, new_tx_bytes;
             get_net_info(out new_rx_bytes, out new_tx_bytes);
             this.net_up.indicated_value =
-                (double)(new_tx_bytes-this.tx_bytes) / 1000.0 / interval;
+                ((double)(new_tx_bytes-this.tx_bytes) / 1000.0 / interval)
+                    .clamp(0.0, 1.0);
                 // use SI kB/s
             this.net_down.indicated_value =
-                (double)(new_rx_bytes-this.rx_bytes) / 1000.0 / interval;
+                ((double)(new_rx_bytes-this.rx_bytes) / 1000.0 / interval)
+                    .clamp(0.0, 1.0);
                 // use SI kB/s
             this.tx_bytes = new_tx_bytes;
             this.rx_bytes = new_rx_bytes;
@@ -195,13 +198,15 @@ protected class LogarithmicIndicator: Gtk.ProgressBar {
             this._value = value;
             
             if (this._value > 0.0) {
-                var log_val = Math.log10(this._value);
-                var level = ((int)log_val).clamp(0, colors.length[0]-1);
+                var log_val =
+                    Math.log10(this._value).clamp(0, colors.length[0]);
+                var level = int.min((int)log_val, colors.length[0]-1);
+                assert(0 <= level <= log_val <= level+1 <= colors.length[0]);
                 
                 //this.fraction =
                 //    double.min(1.0, Math.exp(Math.LN10 * (log_val-level-1)));
                 //    // (exp10 is less standard than log10)
-                this.fraction = double.min(1.0, log_val-level);
+                this.fraction = log_val-level;
                 
                 this.modify_bg(Gtk.StateType.SELECTED, colors[level,0]);
                 this.modify_fg(Gtk.StateType.PRELIGHT, colors[level,1]);
