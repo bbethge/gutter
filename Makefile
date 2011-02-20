@@ -51,6 +51,7 @@ $(1).c $(1).h $(1).vapi: $(1).vala \
 	$$(VALAC) -C -o $(1).c -H $(1).h --vapi=$(1).vapi $$(valac_flags) \
 		$$(addprefix --pkg=,$$($(subst -,_,$(1))_mods) $$($(subst -,_,$(1))_pkgs)) $$(VALACFLAGS) \
 		$(1).vala
+	touch $(1).c $(1).h $(1).vapi
 
 $(1).o: $(1).c $(1).h $$($(subst -,_,$(1))_mods:%=%.h)
 	$$(CC) -c -o $(1).o $$(cc_flags) \
