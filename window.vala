@@ -79,7 +79,8 @@ public class Window: Gtk.Window {
         // Gdk.Rectangle, but it really should be a Gtk.Allocation.  We can
         // probably ignore this since the two structures are identical.
     {
-        base.size_allocate(allocation);
+        // This causes the child to get size_allocate’d twice.
+        //base.size_allocate(allocation);
         
         Gtk.Widget? child = this.get_child();
         if (child != null && child.visible) {
