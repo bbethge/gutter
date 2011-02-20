@@ -11,6 +11,7 @@ public class Monitor: Gtk.HBox
     // For debugging
     //protected LogarithmicIndicator test = new LogarithmicIndicator();
     
+    protected TimeVal last_update_time = TimeVal();
     protected ulong cpu_time = get_cpu_time();
     private static const long user_hz = Posix.sysconf(Posix._SC_CLK_TCK);
     
@@ -70,11 +71,17 @@ public class Monitor: Gtk.HBox
         //this.pack_start(this.test, false, false, 0);
         
         Timeout.add_seconds(1, () => {
-            // TODO: account for unpredictable time interval
+            TimeVal current_time = TimeVal();
+            double interval =
+                (double) (current_time.tv_sec - this.last_update_time.tv_sec)
+                + (double)(current_time.tv_usec - this.last_update_time.tv_usec)
+                    / 1000000.0;
+            this.last_update_time = current_time;
+            
             ulong new_cpu_time = get_cpu_time();
             if (new_cpu_time > 0) {
                 this.cpu.fraction =
-                    (double)(new_cpu_time-this.cpu_time) / user_hz;
+                    (double)(new_cpu_time-this.cpu_time) / user_hz / interval;
                 this.cpu_time = new_cpu_time;
             }
             
@@ -86,9 +93,11 @@ public class Monitor: Gtk.HBox
             ulong new_rx_bytes, new_tx_bytes;
             get_net_info(out new_rx_bytes, out new_tx_bytes);
             this.net_up.indicated_value =
-                (double)(new_tx_bytes-this.tx_bytes) / 1000.0;  // use SI kB/s
+                (double)(new_tx_bytes-this.tx_bytes) / 1000.0 / interval;
+                // use SI kB/s
             this.net_down.indicated_value =
-                (double)(new_rx_bytes-this.rx_bytes) / 1000.0;  // use SI kB/s
+                (double)(new_rx_bytes-this.rx_bytes) / 1000.0 / interval;
+                // use SI kB/s
             this.tx_bytes = new_tx_bytes;
             this.rx_bytes = new_rx_bytes;
             
