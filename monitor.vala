@@ -8,6 +8,8 @@ public class Monitor: Gtk.HBox
     protected Gtk.ProgressBar swap = new Gtk.ProgressBar();
     protected LogarithmicIndicator net_up = new LogarithmicIndicator();
     protected LogarithmicIndicator net_down = new LogarithmicIndicator();
+    // For debugging
+    //protected LogarithmicIndicator test = new LogarithmicIndicator();
     
     protected ulong cpu_time = get_cpu_time();
     private static const long user_hz = Posix.sysconf(Posix._SC_CLK_TCK);
@@ -59,6 +61,14 @@ public class Monitor: Gtk.HBox
         this.net_down.show();
         this.pack_start(this.net_down, false, false, 0);
         
+        // For debugging
+        //this.test.orientation = Gtk.ProgressBarOrientation.BOTTOM_TO_TOP;
+        //this.test.set_size_request(meter_w, meter_h);
+        //this.test.text = "?";
+        //this.test.indicated_value = 1.0;
+        //this.test.show();
+        //this.pack_start(this.test, false, false, 0);
+        
         Timeout.add_seconds(1, () => {
             // TODO: account for unpredictable time interval
             ulong new_cpu_time = get_cpu_time();
@@ -81,6 +91,9 @@ public class Monitor: Gtk.HBox
                 (double)(new_rx_bytes-this.rx_bytes) / 1000.0;  // use SI kB/s
             this.tx_bytes = new_tx_bytes;
             this.rx_bytes = new_rx_bytes;
+            
+            // For debugging
+            //this.test.indicated_value *= 1.2;
             
             return true;
         });
@@ -174,26 +187,28 @@ protected class LogarithmicIndicator: Gtk.ProgressBar {
             
             if (this._value > 0.0) {
                 var log_val = Math.log10(this._value);
-                var level = ((int)log_val).clamp(0, 10/*colors.length*/-1);
+                var level = ((int)log_val).clamp(0, colors.length[0]-1);
                 
-                this.fraction =
-                    double.min(1.0, Math.exp(Math.LN10 * (log_val-level-1)));
-                    // (exp10 is less standard than log10)
-                this.modify_bg(Gtk.StateType.SELECTED, colors[level]);
-                this.modify_fg(Gtk.StateType.NORMAL, colors[level]);
+                //this.fraction =
+                //    double.min(1.0, Math.exp(Math.LN10 * (log_val-level-1)));
+                //    // (exp10 is less standard than log10)
+                this.fraction = double.min(1.0, log_val-level);
+                
+                this.modify_bg(Gtk.StateType.SELECTED, colors[level,0]);
+                this.modify_fg(Gtk.StateType.PRELIGHT, colors[level,1]);
                 if (level > 0) {
-                    this.modify_bg(Gtk.StateType.NORMAL, colors[level-1]);
-                    this.modify_fg(Gtk.StateType.SELECTED, colors[level-1]);
+                    this.modify_bg(Gtk.StateType.NORMAL, colors[level-1,0]);
+                    this.modify_fg(Gtk.StateType.NORMAL, colors[level-1,1]);
                 }
                 else {
                     this.modify_bg(Gtk.StateType.NORMAL, null);
-                    this.modify_fg(Gtk.StateType.SELECTED, null);
+                    this.modify_fg(Gtk.StateType.NORMAL, null);
                 }
             }
             else {
                 this.fraction = 0.0;
                 this.modify_bg(Gtk.StateType.SELECTED, null);
-                this.modify_fg(Gtk.StateType.SELECTED, null);
+                this.modify_fg(Gtk.StateType.PRELIGHT, null);
                 this.modify_bg(Gtk.StateType.NORMAL, null);
                 this.modify_fg(Gtk.StateType.NORMAL, null);
             }
@@ -202,17 +217,25 @@ protected class LogarithmicIndicator: Gtk.ProgressBar {
     
     protected double _value;
     
-    protected class Gdk.Color[] colors = {
-        Gdk.Color() { red=0x3737, green=0x3737, blue=0x3737 },  // black
-        Gdk.Color() { red=0x7575, green=0x5A5A, blue=0x2424 },  // brown
-        Gdk.Color() { red=0xCCCC, green=0x4747, blue=0x4747 },  // red
-        Gdk.Color() { red=0xFFFF, green=0xAAAA, blue=0x3939 },  // orange
-        Gdk.Color() { red=0xDCDC, green=0xDCDC, blue=0x4040 },  // yellow
-        Gdk.Color() { red=0x5555, green=0xB7B7, blue=0x5555 },  // green
-        Gdk.Color() { red=0x3A3A, green=0x3A3A, blue=0x8E8E },  // blue
-        Gdk.Color() { red=0x8C8C, green=0x4848, blue=0xCFCF },  // violet
-        Gdk.Color() { red=0x8080, green=0x8080, blue=0x8080 },  // gray
-        Gdk.Color() { red=0xEFEF, green=0xEFEF, blue=0xEFEF }   // white
+    private static Gdk.Color color(uint32 rgb) {
+        var r = (uint16) ((rgb & 0xff0000) >> 16);
+        var g = (uint16) ((rgb & 0x00ff00) >> 8);
+        var b = (uint16) (rgb & 0x0000ff);
+        return Gdk.Color() { red=r<<8|r, green=g<<8|g, blue=b<<8|b };
+    }
+    protected static Gdk.Color white = color(0xffffff);
+    protected static Gdk.Color black = color(0x000000);
+    protected static Gdk.Color[,] colors = {
+        { color(0x373737), white },  // black
+        { color(0x755A24), white },  // brown
+        { color(0xAF2F2F), white },  // red
+        { color(0xEB9A2F), black },  // orange
+        { color(0xEBEB44), black },  // yellow
+        { color(0x55B755), white },  // green
+        { color(0x3A3A8E), white },  // blue
+        { color(0x8C48CF), black },  // violet
+        { color(0x808080), black },  // gray
+        { color(0xEFEFEF), black }   // white
     };
 }
 
