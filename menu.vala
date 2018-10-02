@@ -6,7 +6,20 @@ public class Menu: Gtk.MenuBar {
     construct {
         this.set_pack_direction(Gtk.PackDirection.TTB);
         
-        this.menu = new Garcon.Menu.applications();
+        Garcon.set_environment("XFCE");
+        
+        // Try to find xfce-applications.menu, which is used by xfce4-panel (at
+        // least on Fedora).
+        string? menu_filename =
+            Garcon.config_lookup("menus/xfce-applications.menu");
+        if (menu_filename != null) {
+            this.menu = new Garcon.Menu.for_path(menu_filename);
+        }
+        else {  // Fall back to Garcon’s default applications menu
+            warning("Couldn't find XFCE applications menu");
+            this.menu = new Garcon.Menu.applications();
+        }
+        
         try {
             this.menu.load(null);
         }
@@ -28,12 +41,13 @@ public class Menu: Gtk.MenuBar {
     }
     
     protected static void build_menu(Gtk.Menu menu, Garcon.Menu garcon_menu) {
-        var elts = garcon_menu.get_elements().copy();
-        elts.sort((e1, e2) => {
-            return
-                ((Garcon.MenuElement)e1).get_name()
-                    .collate(((Garcon.MenuElement)e2).get_name());
-        });
+        var elts = garcon_menu.get_elements();
+        //var elts = garcon_menu.get_elements().copy();
+        //elts.sort((e1, e2) => {
+        //    return
+        //        ((Garcon.MenuElement)e1).get_name()
+        //            .collate(((Garcon.MenuElement)e2).get_name());
+        //});
         foreach (var elt in elts) {
             if (!elt.get_visible()) continue;
             
@@ -41,12 +55,23 @@ public class Menu: Gtk.MenuBar {
             string? icon_name = elt.get_icon_name();
             Gtk.Image? image = null;
             if (icon_name != null && icon_name.length > 0) {
+                string? icon_file = null;
                 if (icon_name[0] == '/') {
+                    icon_file = icon_name;
+                }
+                else if ("." in icon_name) {
+                    // FIXME: This assumes that if icon_name contains a dot
+                    // then it is a filename to look up in
+                    // /usr/share/pixmaps rather than an icon name, but this
+                    // is just a heuristic and probably could be wrong.
+                    icon_file = "/usr/share/pixmaps/" + icon_name;
+                }
+                if (icon_file != null) {
                     int w, h;
                     Gtk.icon_size_lookup(Gtk.IconSize.MENU, out w, out h);
                     try {
                         var pixbuf =
-                            new Gdk.Pixbuf.from_file_at_size(icon_name, w, h);
+                            new Gdk.Pixbuf.from_file_at_size(icon_file, w, h);
                         image = new Gtk.Image.from_pixbuf(pixbuf);
                     }
                     catch (Error err) {
@@ -59,13 +84,18 @@ public class Menu: Gtk.MenuBar {
                     );
                 }
             }
-            if (image != null) {
-                var img_item = new Gtk.ImageMenuItem.with_label(elt.get_name());
-                img_item.image = image;
-                item = img_item;
+            if (elt is Garcon.MenuSeparator) {
+                item = new Gtk.SeparatorMenuItem();
             }
             else {
-                item = new Gtk.MenuItem.with_label(elt.get_name());
+                if (image != null) {
+                    var img_item = new Gtk.ImageMenuItem.with_label(elt.get_name());
+                    img_item.image = image;
+                    item = img_item;
+                }
+                else {
+                    item = new Gtk.MenuItem.with_label(elt.get_name());
+                }
             }
             if (elt is Garcon.Menu) {
                 var submenu = new Gtk.Menu();
@@ -103,14 +133,6 @@ public class Menu: Gtk.MenuBar {
             );
             return;
         }
-        
-        //Regex percent_escape;
-        //try {
-        //    percent_escape = new Regex("%.");
-        //}
-        //catch (RegexError err) {
-        //    return_if_reached();
-        //}
         
         string?[] new_args = new string[0];
         foreach (var arg in args) {
@@ -164,46 +186,6 @@ public class Menu: Gtk.MenuBar {
                 
                 rem = rem.next_char();
             }
-            //bool err = false;
-            //string? new_arg;
-            //try {
-            //    new_arg = percent_escape.replace_eval(
-            //        arg, arg.length, 0, 0,
-            //        (match, result) => {
-            //            switch (match.fetch(0)[1]) {
-            //            case '%':
-            //                result.append_c('%');
-            //                break;
-            //            case 'f':
-            //            case 'u':
-            //            case 'd':
-            //            case 'D':
-            //            case 'n':
-            //            case 'N':
-            //            case 'v':
-            //            case 'm':
-            //                // Ignore these
-            //                break;
-            //            case 'c':
-            //                result.append(item.name);
-            //                break;
-            //            case 'k':
-            //                result.append(item.file.get_path());
-            //                break;
-            //            default:
-            //                warning("Invalid field code in command line");
-            //                err = true;
-            //                return true;
-            //            }
-            //            return false;
-            //        }
-            //    );
-            //}
-            //catch (RegexError err) {
-            //    // TODO: More error reporting?
-            //    return;
-            //}
-            //if (err) return;
             new_args += new_arg.str;
         }
         new_args += null;
