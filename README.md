@@ -1,4 +1,5 @@
 #Gutter
+
 This is a project I started for no apparent reason to make a fast, monolithic desktop panel that looks good on the right edge of the screen.
 
 **Caution**: Since I never really used it exclusively, there is a quit button that terminates the panel (although you might think it would log you out).  So, don’t click it if you are trying to use this as your exclusive panel. ☺
