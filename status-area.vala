@@ -82,12 +82,13 @@ public class StatusArea: Gtk.HBox {
             xevent->xclient.window
             == (X.Window) Gdk.x11_drawable_get_xid(this.manager_window)
         ) {
-            switch (xevent.xclient.data.l[1]) {
+            var xclientevent = (XFixes.ClientMessageEvent*) (&xevent->xclient);
+            switch (xclientevent->data.l[1]) {
             case 0:  // SYSTEM_TRAY_REQUEST_DOCK
                 var socket = new Gtk.Socket();
                 socket.show();
                 this.pack_start(socket, false, false, 0);
-                socket.add_id((Gdk.NativeWindow)xevent->xclient.data.l[2]);
+                socket.add_id((Gdk.NativeWindow)xclientevent->data.l[2]);
                 return Gdk.FilterReturn.REMOVE;
             }
         }

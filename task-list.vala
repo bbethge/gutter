@@ -12,11 +12,16 @@ protected class WindowButton: Gtk.Bin
     protected bool popup_saw_enter_event;
         // Whether this.popup has received an enter event since we created it
     
-    public X.Window xwindow { get; set construct; }
+    private X.Window xwindow;
+    public X.Window get_xwindow()
         // The toplevel window that is controlled through this widget
+    {
+        return this.xwindow;
+    }
     
     public WindowButton(SList<Gtk.RadioButton>? group, X.Window xwindow) {
-        Object(xwindow: xwindow);
+        Object();
+        this.xwindow = xwindow;
         if (group != null) {
             this.button.set_group(group);
         }
@@ -104,7 +109,7 @@ protected class WindowButton: Gtk.Bin
                 this.popup.transient_for = this.get_toplevel() as Gtk.Window;
                 
                 this.button.reparent(this.popup);
-                this.popup.set_size_request(request.width, request.height);
+                this.popup.set_size_request(request.width, alloc.height);
                 
                 // FIXME: Make this work with Gutter on the left side?
                 int x = this.get_screen().get_width() - request.width;
@@ -211,7 +216,8 @@ protected class WindowButton: Gtk.Bin
         
         var xroot =
             (X.Window) Gdk.x11_drawable_get_xid(this.get_root_window());
-        var xdisplay = Gdk.x11_display_get_xdisplay(this.get_display());
+        unowned X.Display xdisplay = 
+            Gdk.x11_display_get_xdisplay(this.get_display());
         var status = XFixes.send_event(
             xdisplay,
             xroot, false,
@@ -248,7 +254,7 @@ public class TaskList: Gtk.VBox {
         );
     
     public TaskList() {
-        Object(homogeneous: false);
+        Object(homogeneous: true);
     }
     
     construct {
@@ -299,7 +305,7 @@ public class TaskList: Gtk.VBox {
     }
     
     protected void on_client_list_changed() {
-        X.Display xdisplay = Gdk.x11_get_default_xdisplay();
+        unowned X.Display xdisplay = Gdk.x11_get_default_xdisplay();
         X.Window xroot = Gdk.x11_get_default_root_xwindow();
         XArray32 windows;
         switch (

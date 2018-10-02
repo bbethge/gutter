@@ -14,8 +14,8 @@ menu_deps = garcon-1 gdk-2.0 gtk+-2.0
 task_list_deps = bimap get-window-property x-event-filter-manager \
 	fixes x11 gdk-2.0 gdk-x11-2.0 gtk+-2.0
 get_window_property_deps = fixes x11 gdk-2.0 gdk-x11-2.0
-x_event_filter_manager_deps = gee-1.0 x11 gdk-2.0 gdk-x11-2.0
-status_area_deps = x11 gdk-2.0 gdk-x11-2.0 gtk+-2.0
+x_event_filter_manager_deps = gee-0.8 x11 gdk-2.0 gdk-x11-2.0
+status_area_deps = fixes x11 gdk-2.0 gdk-x11-2.0 gtk+-2.0
 monitor_deps = posix gdk-2.0 gtk+-2.0
 clock_deps = pango gtk+-2.0
 
@@ -35,8 +35,8 @@ local_packages = garcon-1 fixes
 all: gutter
 
 gutter: $(modules:%=%.o)
-	$(CC) -o gutter $(shell pkg-config --libs $(libraries)) $(LDFLAGS) \
-		$(modules:%=%.o)
+	$(CC) -o gutter $(modules:%=%.o) $(LDFLAGS) \
+		$(shell pkg-config --libs $(libraries)) -lm
 
 define module_rules =
 $(subst -,_,$(1))_full_deps := $$(call expand_deps,$(1))

@@ -13,7 +13,7 @@ public class Monitor: Gtk.HBox
     
     protected TimeVal last_update_time = TimeVal();
     protected ulong cpu_time = get_cpu_time();
-    private static const long user_hz = Posix.sysconf(Posix._SC_CLK_TCK);
+    private static long user_hz = Posix.sysconf(Posix._SC_CLK_TCK);
     
     protected ulong rx_bytes;
     protected ulong tx_bytes;
@@ -52,13 +52,13 @@ public class Monitor: Gtk.HBox
         
         this.net_up.orientation = Gtk.ProgressBarOrientation.BOTTOM_TO_TOP;
         this.net_up.set_size_request(meter_w, meter_h);
-        this.net_up.text = "↑";
+        this.net_up.text = "↥";
         this.net_up.show();
         this.pack_start(this.net_up, false, false, 0);
         
         this.net_down.orientation = Gtk.ProgressBarOrientation.BOTTOM_TO_TOP;
         this.net_down.set_size_request(meter_w, meter_h);
-        this.net_down.text = "↓";
+        this.net_down.text = "⤓";
         this.net_down.show();
         this.pack_start(this.net_down, false, false, 0);
         
@@ -94,12 +94,10 @@ public class Monitor: Gtk.HBox
             ulong new_rx_bytes, new_tx_bytes;
             get_net_info(out new_rx_bytes, out new_tx_bytes);
             this.net_up.indicated_value =
-                ((double)(new_tx_bytes-this.tx_bytes) / 1000.0 / interval)
-                    .clamp(0.0, 1.0);
+                ((double)(new_tx_bytes-this.tx_bytes) / 1000.0 / interval);
                 // use SI kB/s
             this.net_down.indicated_value =
-                ((double)(new_rx_bytes-this.rx_bytes) / 1000.0 / interval)
-                    .clamp(0.0, 1.0);
+                ((double)(new_rx_bytes-this.rx_bytes) / 1000.0 / interval);
                 // use SI kB/s
             this.tx_bytes = new_tx_bytes;
             this.rx_bytes = new_rx_bytes;
@@ -118,7 +116,7 @@ public class Monitor: Gtk.HBox
         while (!stat_file.eof()) {
             ulong user, nice=0, system=0, irq=0, softirq=0;
             int items_read = stat_file.scanf(
-                "cpu %ul %ul %ul %*ul %*ul %ul %ul",
+                "cpu %lu %lu %lu %*lu %*lu %lu %lu",
                 out user, out nice, out system, out irq, out softirq
             );
             if (items_read != FileStream.EOF && items_read > 0) {
@@ -166,18 +164,18 @@ public class Monitor: Gtk.HBox
         tx_bytes = 0;
         
         var net_dev_file = FileStream.open("/proc/net/dev", "r");
+        warn_if_fail(net_dev_file != null);
         if (net_dev_file == null) return;
         
         while (!net_dev_file.eof()) {
             char iface_char[32] = { 0 };
             ulong iface_rx=0, iface_tx=0;
             int items_read = net_dev_file.scanf(
-                " %31[a-zA-Z0-9_-]:"
-                +" %lu %*lu %*lu %*lu %*lu %*lu %*lu %*lu %lu",
+                " %31[a-zA-Z0-9_-] : %lu %*lu %*lu %*lu %*lu %*lu %*lu %*lu %lu",
                 ref iface_char, ref iface_rx, ref iface_tx
             );
-            net_dev_file.scanf("%*[^\n]\n");
             unowned string iface = (string) iface_char;
+            net_dev_file.scanf("%*[^\n]\n");  // skip rest of line
             if (
                 items_read != 3
                 || iface.has_prefix("lo")
