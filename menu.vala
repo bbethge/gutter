@@ -41,13 +41,11 @@ public class Menu: Gtk.MenuBar {
     }
     
     protected static void build_menu(Gtk.Menu menu, Garcon.Menu garcon_menu) {
-        var elts = garcon_menu.get_elements();
-        //var elts = garcon_menu.get_elements().copy();
-        //elts.sort((e1, e2) => {
-        //    return
-        //        ((Garcon.MenuElement)e1).get_name()
-        //            .collate(((Garcon.MenuElement)e2).get_name());
-        //});
+        // FIXME: This leaks memory because the return value of get_elements()
+        // should be owned but is marked unowned in the current version of
+        // xfce4-vala.
+        unowned GLib.List<weak Garcon.MenuElement> elts =
+            garcon_menu.get_elements();
         foreach (var elt in elts) {
             if (!elt.get_visible()) continue;
             

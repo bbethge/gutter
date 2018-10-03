@@ -5,7 +5,7 @@ VALA_GEN_INTROSPECT = $(vala_bindir)vala-gen-introspect
 VALACFLAGS = --debug
 CFLAGS = -g
 
-valac_flags = --vapidir=.
+valac_flags = --vapidir=. $(addprefix --vapidir=,$(VAPIDIRS))
 cc_flags = -DGETTEXT_PACKAGE=\"gutter\" -I.
 
 main_deps = window gtk+-2.0
@@ -30,7 +30,7 @@ modules := \
 	$(filter main $(call expand_deps,main),$(basename $(wildcard *.vala)))
 packages := $(filter-out $(modules),$(call expand_deps,main))
 libraries := $(filter $(shell pkg-config --list-all),$(packages))
-local_packages = garcon-1 fixes
+local_packages = fixes
 
 all: gutter
 
@@ -62,26 +62,16 @@ endef
 
 $(foreach mod,$(modules),$(eval $(call module_rules,$(mod))))
 
-garcon-1.vapi: garcon-1/garcon-1.gi garcon-1/garcon-1.metadata
-	$(VAPIGEN) --library garcon-1 --pkg gio-2.0 garcon-1/garcon-1.gi
-
-garcon-1/garcon-1.gi: garcon-1/garcon-1.files garcon-1/garcon-1.defines \
-		garcon-1/garcon-1.namespace
-	$(VALA_GEN_INTROSPECT) garcon-1 garcon-1
-
 .PHONY: clean
 clean:
 	$(RM) gutter $(modules:%=%.c) $(modules:%=%.h) $(modules:%=%.vapi) \
 		$(modules:%=%.o)
-	@echo "To also clean generated .vapi files, do 'make clean-vapi'."
-
-.PHONY: clean-vapi
-clean-vapi:
-	$(RM) garcon-1.vapi garcon-1/garcon-1.gi
 
 .PHONY: help
 help:
 	@echo "Useful variables:"
+	@echo "    VAPIDIRS     Non-standard directories where .vapi files are installed"
+	@echo "                 (probably needed for garcon-1.vapi)"
 	@echo "    VALA_BINDIR  Directory where Vala tools are installed"
 	@echo "    VALAC        Alternate Vala compiler to use (overrides VALA_BINDIR)"
 	@echo "    VALACFLAGS   Extra flags to pass to the Vala compiler (default --debug)"
@@ -95,7 +85,6 @@ help:
 	@echo
 	@echo "Special targets:"
 	@echo "    all         Compile everything (i.e., just 'gutter')"
-	@echo "    clean       Remove generated files, except for custom Vala bindings"
-	@echo "    clean-vapi  Remove generated custom Vala bindings"
+	@echo "    clean       Remove generated files"
 	@echo "    help        Show this help"
 	@echo
