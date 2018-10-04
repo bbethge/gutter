@@ -8,4 +8,4 @@ At the time I thought making it monolithic (i.e., no rearrangeable applets) woul
 So far the main distinctive feature is that the window switcher buttons share all the vertical space (to make them as easy as possible to click) and they pop out to show you the full title when you hover over them.
 
 ## Compiling
-Currently this uses a custom `Makefile` requiring GNU make.  **Note** that, since `xfce4-vala` is not available as a Debian package, you will probably have to check it out from [the git repository](https://git.xfce.org/bindings/xfce4-vala/) and specify the directory containing `garcon-1.vapi` on the `make` commandline using `VAPIDIRS=`*path*.
+Currently this uses a custom `Makefile` requiring GNU make.  **Note** that, since `xfce4-vala` is not available as a Debian package, you will probably have to check it out from [the git repository](https://git.xfce.org/bindings/xfce4-vala/) and specify the directory containing `garcon-1.vapi` on the `configure` commandline using `VALAFLAGS=--vapidir=`*path*.
