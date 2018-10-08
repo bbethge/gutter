@@ -361,8 +361,10 @@ public class TaskList: Gtk.VBox {
                     continue;
                 }
                 
+                var display = Gdk.x11_lookup_xdisplay(xdisplay);
+                // TODO: Check whether ‘display’ is null
                 var window_gdk =
-                    Gdk.Window.foreign_new((Gdk.NativeWindow)window);
+                    Gdk.x11_window_foreign_new_for_display(display, window);
                 window_gdk.set_events(
                     window_gdk.get_events() | Gdk.EventMask.PROPERTY_CHANGE_MASK
                 );

@@ -116,92 +116,26 @@ public class Menu: Gtk.MenuBar {
     static void on_menu_item_activate(
         Gtk.MenuItem gtk_item, Garcon.MenuItem item
     ) {
-        return_if_fail(item.command != null);
-        
-        string[] args;
-        try {
-            Shell.parse_argv(item.command, out args);
-        }
-        catch (ShellError err) {
-            // TODO: Graphical error message?  (See also every other error
-            // handler in this function.)
-            warning(
-                "Unable to parse command line ‘%s’: %s",
-                item.command, err.message
-            );
+        if (item.desktop_id == null) {
+            // TODO: Graphical error message
+            // Note that ‘warning’ should not be used for this purpose
+            //warning("Tried to launch a menu item with no desktop ID");
             return;
         }
-        
-        string?[] new_args = new string[0];
-        foreach (var arg in args) {
-            if (arg == "%F" || arg == "%U") continue;  // Ignore these
-            if (arg == "%i") {
-                if (item.icon_name != null) {
-                    new_args += "--icon";
-                    new_args += item.icon_name;
-                }
-                continue;
-            }
-            
-            unowned string rem = arg;
-            var new_arg = new StringBuilder.sized(arg.length);
-            while (rem != "") {
-                var next_percent = rem.str("%");
-                if (next_percent == null) {
-                    new_arg.append(rem);
-                    break;
-                }
-                new_arg.append_len(
-                    rem, (ssize_t) ((char*)next_percent-(char*)rem)
-                );
-                rem = next_percent.next_char();
-                if (rem == "") break;
-                
-                switch (rem[0]) {
-                case '%':
-                    new_arg.append_c('%');
-                    break;
-                case 'f':
-                case 'u':
-                case 'd':
-                case 'D':
-                case 'n':
-                case 'N':
-                case 'v':
-                case 'm':
-                    // Ignore these
-                    break;
-                case 'c':
-                    new_arg.append(item.name);
-                    break;
-                case 'k':
-                    new_arg.append(item.file.get_path());
-                    break;
-                default:
-                    warning("Invalid field code in command line");
-                    return;
-                }
-                
-                rem = rem.next_char();
-            }
-            new_args += new_arg.str;
+        var info = new GLib.DesktopAppInfo(item.desktop_id);
+        if (info == null) {
+            // TODO: Graphical error message
+            //warning("Could not find file %s", item.desktop_id);
+            return;
         }
-        new_args += null;
-        
-        int pid;
         try {
-            Gdk.spawn_on_screen(
-                gtk_item.get_screen(),
-                item.path,
-                new_args,
-                null,
-                SpawnFlags.SEARCH_PATH | SpawnFlags.STDOUT_TO_DEV_NULL,
-                null,
-                out pid
-            );
+            var context = new Gdk.AppLaunchContext();
+            info.launch(null, context);
         }
         catch (Error err) {
-            warning("Error launching command: %s", err.message);
+            // TODO: Graphical error message
+            //warning("Could not launch %s: %s", item.name ?? "", err.message);
+            return;
         }
     }
 }

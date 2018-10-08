@@ -4,6 +4,7 @@ AM_CPPFLAGS = -DGETTEXT_PACKAGE='"gutter"'
 
 AM_CFLAGS = \
     $(GLIB_CFLAGS) \
+    $(GIO_LIBS) \
     $(GDK_CFLAGS) \
     $(GTK_CFLAGS) \
     $(PANGO_CFLAGS) \
@@ -17,6 +18,8 @@ AM_VALAFLAGS = \
     --pkg=posix \
     --pkg=gdk-2.0 \
     --pkg=gdk-x11-2.0 \
+    --pkg=gio-2.0 \
+    --pkg=gio-unix-2.0 \
     --pkg=gtk+-2.0 \
     --pkg=pango \
     --pkg=garcon-1 \
@@ -43,6 +46,7 @@ gutter_SOURCES = \
 gutter_LDADD = \
     -lm \
     $(GLIB_LIBS) \
+    $(GIO_LIBS) \
     $(GDK_LIBS) \
     $(GTK_LIBS) \
     $(PANGO_LIBS) \

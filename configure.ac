@@ -7,6 +7,7 @@ AC_PROG_CC
 AM_PROG_VALAC
 AC_ARG_VAR([VALAFLAGS], [Additional flags to pass to the Vala compiler])
 PKG_CHECK_MODULES([GLIB], [glib-2.0])
+PKG_CHECK_MODULES([GIO], [gio-2.0 gio-unix-2.0])
 PKG_CHECK_MODULES([GDK], [gdk-2.0 gdk-x11-2.0])
 PKG_CHECK_MODULES([GTK], [gtk+-2.0])
 PKG_CHECK_MODULES([PANGO], [pango])
