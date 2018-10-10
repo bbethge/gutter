@@ -32,38 +32,44 @@ public class Monitor: Gtk.HBox
         int meter_h = icon_h;
         int meter_w = meter_h / 2;
         
-        this.cpu.orientation = Gtk.ProgressBarOrientation.BOTTOM_TO_TOP;
+        this.cpu.orientation = Gtk.Orientation.VERTICAL;
+        this.cpu.inverted = true;
         this.cpu.set_size_request(meter_w, meter_h);
         this.cpu.text = Q_("Single-letter abbr. for CPU|c");
         this.cpu.show();
         this.pack_start(this.cpu, false, false, 0);
         
-        this.memory.orientation = Gtk.ProgressBarOrientation.BOTTOM_TO_TOP;
+        this.memory.orientation = Gtk.Orientation.VERTICAL;
+        this.memory.inverted = true;
         this.memory.set_size_request(meter_w, meter_h);
         this.memory.text = Q_("Single-letter abbr. for system memory|m");
         this.memory.show();
         this.pack_start(this.memory, false, false, 0);
         
-        this.swap.orientation = Gtk.ProgressBarOrientation.BOTTOM_TO_TOP;
+        this.swap.orientation = Gtk.Orientation.VERTICAL;
+        this.swap.inverted = true;
         this.swap.set_size_request(meter_w, meter_h);
         this.swap.text = Q_("Single-letter abbr. for swap space|s");
         this.swap.show();
         this.pack_start(this.swap, false, false, 0);
         
-        this.net_up.orientation = Gtk.ProgressBarOrientation.BOTTOM_TO_TOP;
+        this.net_up.orientation = Gtk.Orientation.VERTICAL;
+        this.net_up.inverted = true;
         this.net_up.set_size_request(meter_w, meter_h);
         this.net_up.text = "↥";
         this.net_up.show();
         this.pack_start(this.net_up, false, false, 0);
         
-        this.net_down.orientation = Gtk.ProgressBarOrientation.BOTTOM_TO_TOP;
+        this.net_down.orientation = Gtk.Orientation.VERTICAL;
+        this.net_down.inverted = true;
         this.net_down.set_size_request(meter_w, meter_h);
         this.net_down.text = "⤓";
         this.net_down.show();
         this.pack_start(this.net_down, false, false, 0);
         
         // For debugging
-        //this.test.orientation = Gtk.ProgressBarOrientation.BOTTOM_TO_TOP;
+        //this.test.orientation = Gtk.Orientation.VERTICAL;
+        //this.test.inverted = true;
         //this.test.set_size_request(meter_w, meter_h);
         //this.test.text = "?";
         //this.test.indicated_value = 1.0;

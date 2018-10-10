@@ -22,7 +22,8 @@ public class Window: Gtk.Window {
         this.skip_taskbar_hint = true;
         this.skip_pager_hint = true;
         
-        var vbox = new Gtk.VBox(false, 5);  // TODO: remove hard-coded size
+        // TODO: remove hard-coded size
+        var vbox = new Gtk.Box(Gtk.Orientation.VERTICAL, 5);
         vbox.show();
         this.add(vbox);
         
@@ -74,17 +75,13 @@ public class Window: Gtk.Window {
     // difference whether we override size_request to request the extra width
     // from the side shadow.
     
-    public override void size_allocate(Gdk.Rectangle allocation)
-        // The Vala bindings think the argument to this function is a
-        // Gdk.Rectangle, but it really should be a Gtk.Allocation.  We can
-        // probably ignore this since the two structures are identical.
-    {
+    public override void size_allocate(Gtk.Allocation allocation) {
         // This causes the child to get size_allocate’d twice.
         //base.size_allocate(allocation);
         
         Gtk.Widget? child = this.get_child();
         if (child != null && child.visible) {
-            var child_alloc = Gdk.Rectangle();
+            var child_alloc = Gtk.Allocation();
             child_alloc.x = this.side == Side.RIGHT ? this.style.xthickness : 0;
             child_alloc.y = 0;
             child_alloc.width = allocation.width - this.style.xthickness;
@@ -96,22 +93,28 @@ public class Window: Gtk.Window {
     public override void realize() {
         base.realize();
         
-        Gdk.Screen screen = this.get_screen();
+        var window = this.get_window();
+        return_if_fail(window != null);
+        var monitor = this.get_display().get_monitor_at_window(window);
+        var monitor_geom = monitor.get_geometry();
         
         var geom = Gdk.Geometry();
         geom.min_width = (int)this.width;
         geom.max_width = (int)this.width;
-        geom.min_height = screen.get_height();
-        geom.max_height = geom.min_height;
+        geom.min_height = monitor_geom.height;
+        geom.max_height = monitor_geom.height;
         this.set_geometry_hints(
             this, geom, Gdk.WindowHints.MIN_SIZE | Gdk.WindowHints.MAX_SIZE
         );
         
         if (this.side == Side.RIGHT) {
-            this.move(screen.get_width() - (int)this.width, 0);
+            this.move(
+                monitor_geom.x + monitor_geom.width - (int)this.width,
+                monitor_geom.y
+            );
         }
         else {
-            this.move(0, 0);
+            this.move(monitor_geom.x, monitor_geom.y);
         }
     }
     
@@ -124,14 +127,14 @@ public class Window: Gtk.Window {
         strut_vals[this.side == Side.RIGHT ? 6 : 4] = event.y;
         strut_vals[this.side == Side.RIGHT ? 7 : 5] = event.y + event.height-1;
         Gdk.property_change(
-            this.window,
+            this.get_window(),
             Gdk.Atom.intern("_NET_WM_STRUT_PARTIAL", false),
             atom_cardinal, 32,
             Gdk.PropMode.REPLACE,
             (uchar[])strut_vals, 12
         );
         Gdk.property_change(
-            this.window,
+            this.get_window(),
             Gdk.Atom.intern("_NET_WM_STRUT", false),
             atom_cardinal, 32,
             Gdk.PropMode.REPLACE,
@@ -141,27 +144,22 @@ public class Window: Gtk.Window {
         return result;
     }
     
-    public override bool expose_event(Gdk.EventExpose event) {
-        Gtk.Allocation allocation;
-        this.get_allocation(out allocation);
-        
-        var clip = Gdk.Rectangle();
-        clip.x = allocation.x; clip.y = allocation.y;
-        clip.width = allocation.width; clip.height = allocation.height;
+    public override bool draw(Cairo.Context cr) {
+        int width = this.get_allocated_width();
+        int height = this.get_allocated_height();
         
         Gtk.paint_shadow(
             this.style,
-            this.get_window(),
+            cr,
             this.get_state(),
             Gtk.ShadowType.OUT,
-            clip,
             this,
             "panel",
-            this.side == Side.RIGHT ? 0 : -allocation.width, -allocation.height,
-            2*allocation.width, 3*allocation.height
+            this.side == Side.RIGHT ? 0 : -width, -height,
+            2*width, 3*height
         );
         
-        return base.expose_event(event);
+        return base.draw(cr);
     }
 }
 

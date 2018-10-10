@@ -7,6 +7,7 @@ AM_CFLAGS = \
     $(GIO_LIBS) \
     $(GDK_CFLAGS) \
     $(GTK_CFLAGS) \
+    $(CAIRO_CFLAGS) \
     $(PANGO_CFLAGS) \
     $(GARCON_CFLAGS) \
     $(X11_CFLAGS) \
@@ -16,11 +17,12 @@ AM_CFLAGS = \
 AM_VALAFLAGS = \
     --vapidir=$(top_srcdir) \
     --pkg=posix \
-    --pkg=gdk-2.0 \
-    --pkg=gdk-x11-2.0 \
+    --pkg=gdk-3.0 \
+    --pkg=gdk-x11-3.0 \
     --pkg=gio-2.0 \
     --pkg=gio-unix-2.0 \
-    --pkg=gtk+-2.0 \
+    --pkg=gtk+-3.0 \
+    --pkg=cairo \
     --pkg=pango \
     --pkg=garcon-1 \
     --pkg=x11 \
@@ -49,6 +51,7 @@ gutter_LDADD = \
     $(GIO_LIBS) \
     $(GDK_LIBS) \
     $(GTK_LIBS) \
+    $(CAIRO_LIBS) \
     $(PANGO_LIBS) \
     $(GARCON_LIBS) \
     $(X11_LIBS) \

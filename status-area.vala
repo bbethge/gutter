@@ -1,11 +1,11 @@
 namespace Gutter {
 
-public class StatusArea: Gtk.HBox {
+public class StatusArea: Gtk.Box {
     protected Gdk.Window? manager_window = null;
     public uint32 timestamp;
     
     public StatusArea(uint32 time = 0) {
-        Object(homogeneous: false);
+        Object(orientation: Gtk.Orientation.HORIZONTAL, homogeneous: false);
         this.timestamp = time;
     }
     
@@ -23,9 +23,9 @@ public class StatusArea: Gtk.HBox {
         var wa = Gdk.WindowAttr();
         wa.width = 1;
         wa.height = 1;
-        wa.wclass = Gdk.WindowClass.INPUT_ONLY;
+        wa.wclass = Gdk.WindowWindowClass.INPUT_ONLY;
         wa.window_type = Gdk.WindowType.CHILD;
-        this.manager_window = new Gdk.Window(this.window, wa, 0);
+        this.manager_window = new Gdk.Window(this.get_window(), wa, 0);
         
         Gdk.Screen screen = this.get_screen();
         var atom__net_system_tray_sn =
@@ -39,30 +39,27 @@ public class StatusArea: Gtk.HBox {
         )) {
             var msg_ev = X.Event();
             msg_ev.type = X.EventType.ClientMessage;
-            msg_ev.xclient.window = Gdk.x11_drawable_get_xid(
-                this.get_screen().get_root_window()
-            );
-            msg_ev.xclient.message_type = Gdk.x11_get_xatom_by_name("MANAGER");
+            msg_ev.xclient.window =
+                (this.get_screen().get_root_window() as Gdk.X11.Window)
+                .get_xid();
+            msg_ev.xclient.message_type = Gdk.X11.get_xatom_by_name("MANAGER");
             msg_ev.xclient.format = 32;
             msg_ev.xclient.data.l[0] = this.timestamp;
-            msg_ev.xclient.data.l[1] = (long) Gdk.x11_atom_to_xatom_for_display(
-                this.get_display(), atom__net_system_tray_sn
+            msg_ev.xclient.data.l[1] = (long) Gdk.X11.atom_to_xatom_for_display(
+                this.get_display() as Gdk.X11.Display, atom__net_system_tray_sn
             );
             msg_ev.xclient.data.l[2] =
-                (long) Gdk.x11_drawable_get_xid(this.manager_window);
+                (long) (this.manager_window as Gdk.X11.Window).get_xid();
             msg_ev.xclient.data.l[3] = 0;
             msg_ev.xclient.data.l[4] = 0;
-            Gdk.x11_display_get_xdisplay(this.get_display())
+            (this.get_display() as Gdk.X11.Display).get_xdisplay()
                 .send_event(
                     msg_ev.xclient.window, false,
                     X.EventMask.StructureNotifyMask,
                     ref msg_ev
                 );
             
-            this.get_display().add_client_message_filter(
-                Gdk.Atom.intern("_NET_SYSTEM_TRAY_OPCODE", false),
-                this.filter_client_message
-            );
+            this.get_window().add_filter(this.filter_event);
             this.manager_window.show();
         }
     }
@@ -74,13 +71,22 @@ public class StatusArea: Gtk.HBox {
         }
     }
     
-    protected Gdk.FilterReturn filter_client_message(
+    protected Gdk.FilterReturn filter_event(
         Gdk.XEvent xevent_gdk, Gdk.Event event
     ) {
         var xevent = (X.Event*) (&xevent_gdk);
+        if (xevent->type != X.EventType.ClientMessage) {
+            return Gdk.FilterReturn.CONTINUE;
+        }
+        var message_type = xevent->xclient.display.intern_atom(
+            "_NET_SYSTEM_TRAY_OPCODE", false
+        );
+        if (xevent->xclient.message_type != message_type) {
+            return Gdk.FilterReturn.CONTINUE;
+        }
         if (
             xevent->xclient.window
-            == (X.Window) Gdk.x11_drawable_get_xid(this.manager_window)
+            == (this.manager_window as Gdk.X11.Window).get_xid()
         ) {
             var xclientevent = (XFixes.ClientMessageEvent*) (&xevent->xclient);
             switch (xclientevent->data.l[1]) {
@@ -88,7 +94,7 @@ public class StatusArea: Gtk.HBox {
                 var socket = new Gtk.Socket();
                 socket.show();
                 this.pack_start(socket, false, false, 0);
-                socket.add_id((Gdk.NativeWindow)xclientevent->data.l[2]);
+                socket.add_id((X.Window)xclientevent->data.l[2]);
                 return Gdk.FilterReturn.REMOVE;
             }
         }

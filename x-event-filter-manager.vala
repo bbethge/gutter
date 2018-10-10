@@ -31,10 +31,11 @@ public class XEventFilterManager {
         }
         if (xev.type == X.EventType.DestroyNotify) {
             xwindow_to_xefms.remove_all(xev.xany.window);
-            var display = Gdk.x11_lookup_xdisplay(xev.xany.display);
+            var display =
+                Gdk.X11.Display.lookup_for_xdisplay(xev.xany.display);
             // TODO: What if display == null?
             var window =
-                Gdk.x11_window_foreign_new_for_display(
+                new Gdk.X11.Window.foreign_for_display(
                     display, xev.xany.window
                 );
             window.remove_filter(wrapper);
@@ -57,7 +58,7 @@ public class XEventFilterManager {
         xefm.type = type;
         xefm.filter = filter;
         
-        X.Window xwindow = (X.Window) Gdk.x11_drawable_get_xid(window);
+        var xwindow = (window as Gdk.X11.Window).get_xid();
         
         xwindow_to_xefms[xwindow] = xefm;
         X.Window? w2 = xwindow;

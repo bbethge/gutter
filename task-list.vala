@@ -5,7 +5,7 @@ protected class WindowButton: Gtk.Bin
 {
     protected Gtk.Widget? _image = null;
     protected Gtk.Label _label = new Gtk.Label(null);
-    protected Gtk.HBox hbox = new Gtk.HBox(false, 0);
+    protected Gtk.Box hbox = new Gtk.Box(Gtk.Orientation.HORIZONTAL, 0);
     protected bool is_popped_out = false;
     protected Gtk.RadioButton button = new Gtk.RadioButton(null);
     protected Gtk.Window? popup = null;
@@ -89,18 +89,18 @@ protected class WindowButton: Gtk.Bin
             // not ellipsized.
             var prev_ellipsize = this._label.ellipsize;
             this._label.ellipsize = Pango.EllipsizeMode.NONE;
-            Gtk.Requisition request;
-            this.size_request(out request);
+            int width;
+            this.get_preferred_width(null, out width);
             this._label.ellipsize = prev_ellipsize;
-            request.width =
-                int.min(request.width, this.get_screen().get_width()/2);
+            var screen_width = this.get_screen().get_width();
+            width = int.min(width, screen_width/2);
             
             // If we currently have smaller width than we would request without
             // ellipsization (meaning that this._label is probably ellipsized),
             // create a popup to show more of this._label.
             Gtk.Allocation alloc;
             this.get_allocation(out alloc);
-            if (request.width > alloc.width) {
+            if (width > alloc.width) {
                 this.is_popped_out = true;
                 this.popup = new Gtk.Window(Gtk.WindowType.POPUP);
                 this.popup.add_events(Gdk.EventMask.STRUCTURE_MASK);
@@ -109,14 +109,14 @@ protected class WindowButton: Gtk.Bin
                 this.popup.transient_for = this.get_toplevel() as Gtk.Window;
                 
                 this.button.reparent(this.popup);
-                this.popup.set_size_request(request.width, alloc.height);
+                this.popup.set_size_request(width, alloc.height);
                 
                 // FIXME: Make this work with Gutter on the left side?
-                int x = this.get_screen().get_width() - request.width;
+                int x = screen_width - width;
                 
                 Gtk.Widget toplevel = this.get_toplevel();
                 int toplevel_y;
-                toplevel.window.get_origin(null, out toplevel_y);
+                toplevel.get_window().get_origin(null, out toplevel_y);
                 int y_wrt_toplevel;
                 bool succ = this.translate_coordinates(
                     toplevel, 0, 0, null, out y_wrt_toplevel
@@ -153,13 +153,23 @@ protected class WindowButton: Gtk.Bin
         return false;
     }
     
-    public override void size_request(out Gtk.Requisition requisition) {
+    public override void get_preferred_width(
+        out int minimum, out int natural
+    ) {
         // Request the same size as this.button even when it isn’t our child
         // (because it is in this.popup).
-        this.button.size_request(out requisition);
+        this.button.get_preferred_width(out minimum, out natural);
     }
     
-    public override void size_allocate(Gdk.Rectangle allocation) {
+    public override void get_preferred_height(
+        out int minimum, out int natural
+    ) {
+        // Request the same size as this.button even when it isn’t our child
+        // (because it is in this.popup).
+        this.button.get_preferred_height(out minimum, out natural);
+    }
+    
+    public override void size_allocate(Gtk.Allocation allocation) {
         base.size_allocate(allocation);
         
         Gtk.Widget? child = this.get_child();
@@ -183,7 +193,7 @@ protected class WindowButton: Gtk.Bin
         // FIXME: If you click the button for the parent of a modal dialog, the
         // focus stays on the dialog, but the parent’s button is activated.
         
-        assert(this.window != null);
+        assert(this.get_window() != null);
         
         if (event.button != 1) return false;
         
@@ -196,7 +206,7 @@ protected class WindowButton: Gtk.Bin
             // Iconify the corresponding toplevel window
             
             msg_ev.xclient.message_type =
-                Gdk.x11_get_xatom_by_name("WM_CHANGE_STATE");
+                Gdk.X11.get_xatom_by_name("WM_CHANGE_STATE");
             msg_ev.xclient.data.l[0] = XFixes.IconicState;
             msg_ev.xclient.data.l[1] = 0;  // Unused
             msg_ev.xclient.data.l[2] = 0;  // Unused
@@ -205,19 +215,19 @@ protected class WindowButton: Gtk.Bin
             // Activate the corresponding toplevel window
             
             msg_ev.xclient.message_type =
-                Gdk.x11_get_xatom_by_name("_NET_ACTIVE_WINDOW");
+                Gdk.X11.get_xatom_by_name("_NET_ACTIVE_WINDOW");
             msg_ev.xclient.data.l[0] = 2;  // Source (this program) is a pager
             msg_ev.xclient.data.l[1] = event.time;  // Timestamp
             msg_ev.xclient.data.l[2] =
-                (long) Gdk.x11_drawable_get_xid(this.get_toplevel().window);
+                (long)
+                ((Gdk.X11.Window)this.get_toplevel().get_window()).get_xid();
         }
         msg_ev.xclient.data.l[3] = 0;  // Unused
         msg_ev.xclient.data.l[4] = 0;  // Unused
         
-        var xroot =
-            (X.Window) Gdk.x11_drawable_get_xid(this.get_root_window());
+        var xroot = ((Gdk.X11.Window)this.get_root_window()).get_xid();
         unowned X.Display xdisplay = 
-            Gdk.x11_display_get_xdisplay(this.get_display());
+            ((Gdk.X11.Display)this.get_display()).get_xdisplay();
         var status = XFixes.send_event(
             xdisplay,
             xroot, false,
@@ -243,9 +253,9 @@ protected class WindowButton: Gtk.Bin
 
 public class TaskList: Gtk.VBox {
     static X.Atom xatom__net_client_list =
-        Gdk.x11_get_xatom_by_name("_NET_CLIENT_LIST");
+        Gdk.X11.get_xatom_by_name("_NET_CLIENT_LIST");
     static X.Atom xatom__net_active_window =
-        Gdk.x11_get_xatom_by_name("_NET_ACTIVE_WINDOW");
+        Gdk.X11.get_xatom_by_name("_NET_ACTIVE_WINDOW");
     
     protected Bimap<X.Window?, unowned WindowButton> xwindow_to_button =
         new Bimap<X.Window?, unowned WindowButton> (
@@ -263,9 +273,6 @@ public class TaskList: Gtk.VBox {
     
     public override void realize() {
         base.realize();
-        
-        Gtk.Requisition req;
-        this.size_request(out req);
         
         Gdk.Window root = this.get_root_window();
         root.set_events(root.get_events() | Gdk.EventMask.PROPERTY_CHANGE_MASK);
@@ -289,7 +296,7 @@ public class TaskList: Gtk.VBox {
             // to dereference xev_gdk, so maybe this is not the right way to do
             // it, or the binding is wrong.
         
-        var xroot = Gdk.x11_get_default_root_xwindow();
+        var xroot = Gdk.X11.get_default_root_xwindow();
         if (
             xev->type == X.EventType.PropertyNotify
             && xev->xproperty.window == xroot
@@ -305,8 +312,8 @@ public class TaskList: Gtk.VBox {
     }
     
     protected void on_client_list_changed() {
-        unowned X.Display xdisplay = Gdk.x11_get_default_xdisplay();
-        X.Window xroot = Gdk.x11_get_default_root_xwindow();
+        unowned X.Display xdisplay = Gdk.X11.get_default_xdisplay();
+        X.Window xroot = Gdk.X11.get_default_root_xwindow();
         XArray32 windows;
         switch (
             get_window_property32(
@@ -342,13 +349,13 @@ public class TaskList: Gtk.VBox {
                     get_window_property32(
                         xdisplay,
                         window,
-                        Gdk.x11_get_xatom_by_name("_NET_WM_STATE"),
+                        Gdk.X11.get_xatom_by_name("_NET_WM_STATE"),
                         false,
                         X.XA_ATOM,
                         out state
                     ) == GetWindowPropertyResult.SUCCESS
                     &&
-                    Gdk.x11_get_xatom_by_name("_NET_WM_STATE_SKIP_TASKBAR")
+                    Gdk.X11.get_xatom_by_name("_NET_WM_STATE_SKIP_TASKBAR")
                         in state
                 ) {
                     continue;
@@ -361,10 +368,10 @@ public class TaskList: Gtk.VBox {
                     continue;
                 }
                 
-                var display = Gdk.x11_lookup_xdisplay(xdisplay);
+                var display = Gdk.X11.Display.lookup_for_xdisplay(xdisplay);
                 // TODO: Check whether ‘display’ is null
                 var window_gdk =
-                    Gdk.x11_window_foreign_new_for_display(display, window);
+                    new Gdk.X11.Window.foreign_for_display(display, window);
                 window_gdk.set_events(
                     window_gdk.get_events() | Gdk.EventMask.PROPERTY_CHANGE_MASK
                 );
@@ -386,7 +393,7 @@ public class TaskList: Gtk.VBox {
                     get_window_property32(
                         xdisplay,
                         window,
-                        Gdk.x11_get_xatom_by_name("_NET_WM_ICON"),
+                        Gdk.X11.get_xatom_by_name("_NET_WM_ICON"),
                         false,
                         X.XA_CARDINAL,
                         out icon_data
@@ -478,8 +485,8 @@ public class TaskList: Gtk.VBox {
         XArray32 xwindow_arr;
         if (
             get_window_property32(
-                Gdk.x11_get_default_xdisplay(),
-                Gdk.x11_get_default_root_xwindow(),
+                Gdk.X11.get_default_xdisplay(),
+                Gdk.X11.get_default_root_xwindow(),
                 this.xatom__net_active_window,
                 false,
                 X.XA_WINDOW,
@@ -500,9 +507,9 @@ public class TaskList: Gtk.VBox {
     {
         if (
             xevent.xproperty.atom
-                == Gdk.x11_get_xatom_by_name("_NET_WM_VISIBLE_NAME")
+                == Gdk.X11.get_xatom_by_name("_NET_WM_VISIBLE_NAME")
             ||
-            xevent.xproperty.atom == Gdk.x11_get_xatom_by_name("_NET_WM_NAME")
+            xevent.xproperty.atom == Gdk.X11.get_xatom_by_name("_NET_WM_NAME")
             ||
             xevent.xproperty.atom == X.XA_WM_NAME
         ) {
@@ -523,12 +530,12 @@ public class TaskList: Gtk.VBox {
         WindowButton? button = this.xwindow_to_button.lookup(xwindow);
         return_if_fail(button != null);
         
-        X.Atom xatom_utf8_string = Gdk.x11_get_xatom_by_name("UTF8_STRING");
+        X.Atom xatom_utf8_string = Gdk.X11.get_xatom_by_name("UTF8_STRING");
         X.Atom props[6] = {
-            Gdk.x11_get_xatom_by_name("_NET_WM_VISIBLE_NAME"),
+            Gdk.X11.get_xatom_by_name("_NET_WM_VISIBLE_NAME"),
                 xatom_utf8_string,
-            Gdk.x11_get_xatom_by_name("_NET_WM_NAME"), xatom_utf8_string,
-            X.XA_WM_NAME, Gdk.x11_get_xatom_by_name("STRING")
+            Gdk.X11.get_xatom_by_name("_NET_WM_NAME"), xatom_utf8_string,
+            X.XA_WM_NAME, Gdk.X11.get_xatom_by_name("STRING")
         };
         
         XArray8 name_arr;
