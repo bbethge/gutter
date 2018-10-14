@@ -283,20 +283,17 @@ public class TaskList: Gtk.Box {
     private Gdk.FilterReturn filter_root_window_xevent(
         Gdk.XEvent xev_gdk, Gdk.Event ev
     ) {
-        var xev = (X.Event*) (&xev_gdk);
-            // I had to fight with the compiler on this one to make it not try
-            // to dereference xev_gdk, so maybe this is not the right way to do
-            // it, or the binding is wrong.
+        var xev = (X.Event*) xev_gdk;
         
         var xroot = Gdk.X11.get_default_root_xwindow();
         if (
-            xev->type == X.EventType.PropertyNotify
-            && xev->xproperty.window == xroot
+            xev.type == X.EventType.PropertyNotify
+            && xev.xproperty.window == xroot
         ) {
-            if (xev->xproperty.atom == xatom__net_client_list) {
+            if (xev.xproperty.atom == xatom__net_client_list) {
                 this.on_client_list_changed();
             }
-            else if (xev->xproperty.atom == xatom__net_active_window) {
+            else if (xev.xproperty.atom == xatom__net_active_window) {
                 this.on_active_window_changed();
             }
         }
@@ -473,7 +470,6 @@ public class TaskList: Gtk.Box {
         }
     }
     
-    // FIXME: Gutter no longer responds to the active window changing
     protected void on_active_window_changed() {
         XArray32 xwindow_arr;
         if (
