@@ -27,13 +27,15 @@ public class StatusArea: Gtk.Box {
         wa.window_type = Gdk.WindowType.CHILD;
         this.manager_window = new Gdk.Window(this.get_window(), wa, 0);
         
-        Gdk.Screen screen = this.get_screen();
-        var atom__net_system_tray_sn =
-            Gdk.Atom.intern(@"_NET_SYSTEM_TRAY_S$(screen.get_number())", false);
+        // According to documentation for Gdk.Display.get_screen,
+        // ‘There is only one screen’, so I guess we only need the
+        // screen 0 version.
+        var atom__net_system_tray_s0 =
+            Gdk.Atom.intern(@"_NET_SYSTEM_TRAY_S0", false);
         
-        if (Gdk.selection_owner_set(
+        if (Gdk.Selection.owner_set(
             this.manager_window,
-            atom__net_system_tray_sn,
+            atom__net_system_tray_s0,
             this.timestamp,
             false
         )) {
@@ -46,7 +48,7 @@ public class StatusArea: Gtk.Box {
             msg_ev.xclient.format = 32;
             msg_ev.xclient.data.l[0] = this.timestamp;
             msg_ev.xclient.data.l[1] = (long) Gdk.X11.atom_to_xatom_for_display(
-                this.get_display() as Gdk.X11.Display, atom__net_system_tray_sn
+                this.get_display() as Gdk.X11.Display, atom__net_system_tray_s0
             );
             msg_ev.xclient.data.l[2] =
                 (long) (this.manager_window as Gdk.X11.Window).get_xid();

@@ -36,8 +36,9 @@ private GetWindowPropertyResult get_window_property(
     X.Atom actual_type;
     int actual_format;
     ulong remaining_bytes;
+    var gdk_display = Gdk.X11.Display.lookup_for_xdisplay(display);
     
-    Gdk.error_trap_push();
+    gdk_display.error_trap_push();
     int status = display.get_window_property(
         window,
         property,
@@ -50,7 +51,7 @@ private GetWindowPropertyResult get_window_property(
         out data
     );
     // Flushing shouldn’t be necessary because this X request returns data.
-    int x_error = Gdk.error_trap_pop();
+    int x_error = gdk_display.error_trap_pop();
     
     if (unlikely(x_error != 0)) {
         switch (x_error) {

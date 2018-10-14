@@ -1,6 +1,6 @@
 namespace Gutter {
 
-public class Monitor: Gtk.HBox
+public class Monitor: Gtk.Box
     // A widget to display system resource usage
 {
     protected Gtk.ProgressBar cpu = new Gtk.ProgressBar();
@@ -19,7 +19,10 @@ public class Monitor: Gtk.HBox
     protected ulong tx_bytes;
     
     public Monitor() {
-        Object(homogeneous: false, spacing: 1);
+        Object(
+            orientation: Gtk.Orientation.HORIZONTAL, homogeneous: false,
+            spacing: 1
+        );
     }
     
     construct {
@@ -72,9 +75,17 @@ public class Monitor: Gtk.HBox
         //this.test.inverted = true;
         //this.test.set_size_request(meter_w, meter_h);
         //this.test.text = "?";
-        //this.test.indicated_value = 1.0;
+        //this.test.@value = 1.0;
         //this.test.show();
         //this.pack_start(this.test, false, false, 0);
+        
+//        Timeout.add(1000/60, () => {
+//            this.test.@value *= 1.02;
+//            if (this.test.@value > 1e10) {
+//                this.test.@value = 1.0;
+//            }
+//            return true;
+//        });
         
         Timeout.add_seconds(1, () => {
             TimeVal current_time = TimeVal();
@@ -99,17 +110,14 @@ public class Monitor: Gtk.HBox
             
             ulong new_rx_bytes, new_tx_bytes;
             get_net_info(out new_rx_bytes, out new_tx_bytes);
-            this.net_up.indicated_value =
+            this.net_up.@value =
                 ((double)(new_tx_bytes-this.tx_bytes) / 1000.0 / interval);
                 // use SI kB/s
-            this.net_down.indicated_value =
+            this.net_down.@value =
                 ((double)(new_rx_bytes-this.rx_bytes) / 1000.0 / interval);
                 // use SI kB/s
             this.tx_bytes = new_tx_bytes;
             this.rx_bytes = new_rx_bytes;
-            
-            // For debugging
-            //this.test.indicated_value *= 1.2;
             
             return true;
         });
@@ -122,7 +130,7 @@ public class Monitor: Gtk.HBox
         while (!stat_file.eof()) {
             ulong user, nice=0, system=0, irq=0, softirq=0;
             int items_read = stat_file.scanf(
-                "cpu %lu %lu %lu %*lu %*lu %lu %lu",
+                "cpu %lu %lu %lu %*u %*u %lu %lu",
                 out user, out nice, out system, out irq, out softirq
             );
             if (items_read != FileStream.EOF && items_read > 0) {
@@ -177,7 +185,7 @@ public class Monitor: Gtk.HBox
             char iface_char[32] = { 0 };
             ulong iface_rx=0, iface_tx=0;
             int items_read = net_dev_file.scanf(
-                " %31[a-zA-Z0-9_-] : %lu %*lu %*lu %*lu %*lu %*lu %*lu %*lu %lu",
+                " %31[a-zA-Z0-9_-] : %lu %*u %*u %*u %*u %*u %*u %*u %lu",
                 ref iface_char, ref iface_rx, ref iface_tx
             );
             unowned string iface = (string) iface_char;
@@ -196,65 +204,131 @@ public class Monitor: Gtk.HBox
 }
 
 protected class LogarithmicIndicator: Gtk.ProgressBar {
-    public double indicated_value {
+    protected const uint n_colors = 10;
+    
+    public double @value {
         get { return this._value; }
-        set {
+        set construct {
+            uint level;
+            compute_level_and_fraction(this._value, out level, null);
+            this.get_style_context().remove_class(@"logarithmic$level");
+            
             this._value = value;
             
-            if (this._value > 0.0) {
-                var log_val =
-                    Math.log10(this._value).clamp(0, colors.length[0]);
-                var level = int.min((int)log_val, colors.length[0]-1);
-                assert(0 <= level <= log_val <= level+1 <= colors.length[0]);
-                
-                //this.fraction =
-                //    double.min(1.0, Math.exp(Math.LN10 * (log_val-level-1)));
-                //    // (exp10 is less standard than log10)
-                this.fraction = log_val-level;
-                
-                this.modify_bg(Gtk.StateType.SELECTED, colors[level,0]);
-                this.modify_fg(Gtk.StateType.PRELIGHT, colors[level,1]);
-                if (level > 0) {
-                    this.modify_bg(Gtk.StateType.NORMAL, colors[level-1,0]);
-                    this.modify_fg(Gtk.StateType.NORMAL, colors[level-1,1]);
-                }
-                else {
-                    this.modify_bg(Gtk.StateType.NORMAL, null);
-                    this.modify_fg(Gtk.StateType.NORMAL, null);
-                }
-            }
-            else {
-                this.fraction = 0.0;
-                this.modify_bg(Gtk.StateType.SELECTED, null);
-                this.modify_fg(Gtk.StateType.PRELIGHT, null);
-                this.modify_bg(Gtk.StateType.NORMAL, null);
-                this.modify_fg(Gtk.StateType.NORMAL, null);
-            }
+            double fraction;
+            compute_level_and_fraction(this._value, out level, out fraction);
+            this.fraction = fraction;
+            this.get_style_context().add_class(@"logarithmic$level");
         }
     }
     
     protected double _value;
     
-    private static Gdk.Color color(uint32 rgb) {
-        var r = (uint16) ((rgb & 0xff0000) >> 16);
-        var g = (uint16) ((rgb & 0x00ff00) >> 8);
-        var b = (uint16) (rgb & 0x0000ff);
-        return Gdk.Color() { red=r<<8|r, green=g<<8|g, blue=b<<8|b };
+    public override void realize() {
+        base.realize();
+        var css_provider = new Gtk.CssProvider();
+        css_provider.parsing_error.connect((p, s, e) => {
+            warning("Error in hard-coded CSS: %s", e.message);
+        });
+        try {
+            css_provider.load_from_data(
+"""
+@define-color level0 #373737;  /* black */
+@define-color level1 #755A24;  /* brown */
+@define-color level2 #AF2F2F;  /* red */
+@define-color level3 #EB9A2F;  /* orange */
+@define-color level4 #EBEB44;  /* yellow */
+@define-color level5 #55B755;  /* green */
+@define-color level6 #3A3A8E;  /* blue */
+@define-color level7 #8C48CF;  /* violet */
+@define-color level8 #808080;  /* gray */
+@define-color level9 #EFEFEF;  /* white */
+
+progressbar > trough,
+progressbar > trough > progress {
+    background-image: none;
+}
+
+progressbar.logarithmic0 > text { color: grey; }
+progressbar.logarithmic1 > text { color: white; }
+progressbar.logarithmic2 > text { color: white; }
+progressbar.logarithmic3 > text { color: black; }
+progressbar.logarithmic4 > text { color: black; }
+progressbar.logarithmic5 > text { color: white; }
+progressbar.logarithmic6 > text { color: white; }
+progressbar.logarithmic7 > text { color: black; }
+progressbar.logarithmic8 > text { color: black; }
+progressbar.logarithmic9 > text { color: black; }
+
+progressbar.logarithmic0 > trough > progress,
+progressbar.logarithmic1 > trough {
+    background-color: @level0;
+    border-color: shade(@level0, 0.9);
+}
+progressbar.logarithmic1 > trough > progress,
+progressbar.logarithmic2 > trough {
+    background-color: @level1;
+    border-color: shade(@level1, 0.9);
+}
+progressbar.logarithmic2 > trough > progress,
+progressbar.logarithmic3 > trough {
+    background-color: @level2;
+    border-color: shade(@level2, 0.9);
+}
+progressbar.logarithmic3 > trough > progress,
+progressbar.logarithmic4 > trough {
+    background-color: @level3;
+    border-color: shade(@level3, 0.9);
+}
+progressbar.logarithmic4 > trough > progress,
+progressbar.logarithmic5 > trough {
+    background-color: @level4;
+    border-color: shade(@level4, 0.9);
+}
+progressbar.logarithmic5 > trough > progress,
+progressbar.logarithmic6 > trough {
+    background-color: @level5;
+    border-color: shade(@level5, 0.9);
+}
+progressbar.logarithmic6 > trough > progress,
+progressbar.logarithmic7 > trough {
+    background-color: @level6;
+    border-color: shade(@level6, 0.9);
+}
+progressbar.logarithmic7 > trough > progress,
+progressbar.logarithmic8 > trough {
+    background-color: @level7;
+    border-color: shade(@level7, 0.9);
+}
+progressbar.logarithmic8 > trough > progress,
+progressbar.logarithmic9 > trough {
+    background-color: @level8;
+    border-color: shade(@level8, 0.9);
+}
+progressbar.logarithmic9 > trough > progress,
+progressbar.logarithmic0 > trough {
+    background-color: @level9;
+    border-color: shade(@level9, 0.9);
+}
+"""
+            );
+        }
+        catch (Error e) {
+            warning("Unexpected error while parsing CSS: %s", e.message);
+        }
+        this.get_style_context().add_provider(
+            css_provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+        );
     }
-    protected static Gdk.Color white = color(0xffffff);
-    protected static Gdk.Color black = color(0x000000);
-    protected static Gdk.Color[,] colors = {
-        { color(0x373737), white },  // black
-        { color(0x755A24), white },  // brown
-        { color(0xAF2F2F), white },  // red
-        { color(0xEB9A2F), black },  // orange
-        { color(0xEBEB44), black },  // yellow
-        { color(0x55B755), white },  // green
-        { color(0x3A3A8E), white },  // blue
-        { color(0x8C48CF), black },  // violet
-        { color(0x808080), black },  // gray
-        { color(0xEFEFEF), black }   // white
-    };
+    
+    protected static void compute_level_and_fraction(
+        double @value, out uint level, out double? fraction
+    ) {
+        var log_val = Math.log10(@value).clamp(0, n_colors);
+        level = uint.min((uint)log_val, n_colors-1);
+        assert(0 <= level <= log_val <= level+1 <= n_colors);
+        fraction = log_val - level;
+    }
 }
 
 }  // end namespace Gutter

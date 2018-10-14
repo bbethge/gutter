@@ -24,6 +24,24 @@ public class Window: Gtk.Window {
         
         // TODO: remove hard-coded size
         var vbox = new Gtk.Box(Gtk.Orientation.VERTICAL, 5);
+        var vbox_css_provider = new Gtk.CssProvider();
+        vbox_css_provider.parsing_error.connect((p, s, e) => {
+            warning("Error in hard-coded CSS: %s", e.message);
+        });
+        try {
+            vbox_css_provider.load_from_data(
+                  "box {"
+                +@"    margin-$(this.side == Side.RIGHT ? "left" : "right"):"
+                + "        1px;"
+                + "}"
+            );
+        }
+        catch (Error e) {
+            warning("Unexpected error while parsing CSS: %s", e.message);
+        }
+        vbox.get_style_context().add_provider(
+            vbox_css_provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+        );
         vbox.show();
         this.add(vbox);
         
@@ -35,23 +53,18 @@ public class Window: Gtk.Window {
         task_list.show();
         vbox.pack_start(task_list, true, true, 0);
         
-        var stat_area_align = new Gtk.Alignment(0.5f, 0.0f, 0.0f, 0.0f);
-        stat_area_align.show();
-        vbox.pack_start(stat_area_align, false, false, 0);
-        
+        // FIXME: Status area is not shown
         var stat_area = new Gutter.StatusArea(0);
+        stat_area.halign = Gtk.Align.CENTER;
         stat_area.show();
-        stat_area_align.add(stat_area);
-        
-        var monitor_align = new Gtk.Alignment(0.5f, 0.0f, 0.0f, 0.0f);
-        monitor_align.show();
-        vbox.pack_start(monitor_align, false, false, 0);
+        vbox.pack_start(stat_area, false, false, 0);
         
         var monitor = new Monitor();
+        monitor.halign = Gtk.Align.CENTER;
         monitor.show();
-        monitor_align.add(monitor);
+        vbox.pack_start(monitor, false, false, 0);
         
-        var hbox = new Gtk.HBox(false, 0);
+        var hbox = new Gtk.Box(Gtk.Orientation.HORIZONTAL, 0);
         hbox.show();
         vbox.pack_end(hbox, false, true, 0);
         
@@ -60,34 +73,15 @@ public class Window: Gtk.Window {
         hbox.pack_start(clock, true, true, 0);
         
         var quit = new Gtk.Button();
-        quit.xalign = 0.5f;
-        quit.yalign = 0.5f;
+        quit.halign = Gtk.Align.CENTER;
+        quit.valign = Gtk.Align.CENTER;
         quit.relief = Gtk.ReliefStyle.NONE;
-        quit.add(new Gtk.Image.from_stock(
-            Gtk.STOCK_QUIT, Gtk.IconSize.LARGE_TOOLBAR
+        quit.add(new Gtk.Image.from_icon_name(
+            "gtk-quit", Gtk.IconSize.LARGE_TOOLBAR
         ));
         quit.show_all();
         quit.clicked.connect((b) => this.hide());
         hbox.pack_end(quit, false, false, 0);
-    }
-    
-    // Since we set a hard-coded default size, I don’t think it makes much
-    // difference whether we override size_request to request the extra width
-    // from the side shadow.
-    
-    public override void size_allocate(Gtk.Allocation allocation) {
-        // This causes the child to get size_allocate’d twice.
-        //base.size_allocate(allocation);
-        
-        Gtk.Widget? child = this.get_child();
-        if (child != null && child.visible) {
-            var child_alloc = Gtk.Allocation();
-            child_alloc.x = this.side == Side.RIGHT ? this.style.xthickness : 0;
-            child_alloc.y = 0;
-            child_alloc.width = allocation.width - this.style.xthickness;
-            child_alloc.height = allocation.height;
-            child.size_allocate(child_alloc);
-        }
     }
     
     public override void realize() {
@@ -147,17 +141,10 @@ public class Window: Gtk.Window {
     public override bool draw(Cairo.Context cr) {
         int width = this.get_allocated_width();
         int height = this.get_allocated_height();
+        var style = this.get_style_context();
         
-        Gtk.paint_shadow(
-            this.style,
-            cr,
-            this.get_state(),
-            Gtk.ShadowType.OUT,
-            this,
-            "panel",
-            this.side == Side.RIGHT ? 0 : -width, -height,
-            2*width, 3*height
-        );
+        style.render_background(cr, 0, 0, width, height);
+        style.render_frame(cr, 0, 0, width, height);
         
         return base.draw(cr);
     }

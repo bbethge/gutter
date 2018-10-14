@@ -87,16 +87,19 @@ public class Menu: Gtk.MenuBar {
             }
             else {
                 if (image != null) {
-                    var img_item = new Gtk.ImageMenuItem.with_label(elt.get_name());
-                    img_item.image = image;
-                    item = img_item;
+                    item = new Gtk.MenuItem();
+                    var hbox = new Gtk.Box(Gtk.Orientation.HORIZONTAL, 6);
+                    hbox.add(image);
+                    hbox.add(new Gtk.Label(elt.get_name()));
+                    hbox.show_all();
+                    item.add(hbox);
                 }
                 else {
                     item = new Gtk.MenuItem.with_label(elt.get_name());
                 }
             }
             if (elt is Garcon.Menu) {
-                var submenu = new Gtk.Menu();
+                Gtk.Menu? submenu = new Gtk.Menu();
                 build_menu(submenu, (Garcon.Menu)elt);
                 item.set_submenu(submenu);
             }
@@ -129,7 +132,7 @@ public class Menu: Gtk.MenuBar {
             return;
         }
         try {
-            var context = new Gdk.AppLaunchContext();
+            var context = gtk_item.get_display().get_app_launch_context();
             info.launch(null, context);
         }
         catch (Error err) {

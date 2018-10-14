@@ -46,19 +46,6 @@ protected class WindowButton: Gtk.Bin
         this._label.xalign = 0.0f;
         this._label.show();
         this.hbox.pack_start(this._label, true, true, 0);
-        
-        this.update_spacing();
-    }
-    
-    protected void update_spacing() {
-        int spacing = 0;
-        this.button.style_get("image-spacing", &spacing);
-        this.hbox.spacing = spacing;
-    }
-    
-    public override void style_set(Gtk.Style? previous_style) {
-        base.style_set(previous_style);
-        this.update_spacing();
     }
     
     public string? wb_label {
@@ -92,8 +79,10 @@ protected class WindowButton: Gtk.Bin
             int width;
             this.get_preferred_width(null, out width);
             this._label.ellipsize = prev_ellipsize;
-            var screen_width = this.get_screen().get_width();
-            width = int.min(width, screen_width/2);
+            var monitor =
+                this.get_display().get_monitor_at_window(this.get_window());
+            var monitor_geom = monitor.get_geometry();
+            width = int.min(width, monitor_geom.width/2);
             
             // If we currently have smaller width than we would request without
             // ellipsization (meaning that this._label is probably ellipsized),
@@ -108,11 +97,12 @@ protected class WindowButton: Gtk.Bin
                 this.popup.destroy_with_parent = true;
                 this.popup.transient_for = this.get_toplevel() as Gtk.Window;
                 
-                this.button.reparent(this.popup);
+                this.remove(this.button);
+                this.popup.add(this.button);
                 this.popup.set_size_request(width, alloc.height);
                 
                 // FIXME: Make this work with Gutter on the left side?
-                int x = screen_width - width;
+                int x = monitor_geom.width - width;
                 
                 Gtk.Widget toplevel = this.get_toplevel();
                 int toplevel_y;
@@ -120,7 +110,7 @@ protected class WindowButton: Gtk.Bin
                 int y_wrt_toplevel;
                 bool succ = this.translate_coordinates(
                     toplevel, 0, 0, null, out y_wrt_toplevel
-                ); return_if_fail(succ);
+                ); return_val_if_fail(succ, false);
                 int y = toplevel_y + y_wrt_toplevel;
                 
                 this.popup.move(x, y);
@@ -181,7 +171,8 @@ protected class WindowButton: Gtk.Bin
     protected void hide_popup() {
         if (this.is_popped_out) {
             this.is_popped_out = false;
-            this.button.reparent(this);
+            this.popup.remove(this.button);
+            this.add(this.button);
             this.popup.destroy();
             this.popup = null;
         }
@@ -225,7 +216,8 @@ protected class WindowButton: Gtk.Bin
         msg_ev.xclient.data.l[3] = 0;  // Unused
         msg_ev.xclient.data.l[4] = 0;  // Unused
         
-        var xroot = ((Gdk.X11.Window)this.get_root_window()).get_xid();
+        var root = this.get_screen().get_root_window();
+        var xroot = (root as Gdk.X11.Window).get_xid();
         unowned X.Display xdisplay = 
             ((Gdk.X11.Display)this.get_display()).get_xdisplay();
         var status = XFixes.send_event(
@@ -251,7 +243,7 @@ protected class WindowButton: Gtk.Bin
     }
 }
 
-public class TaskList: Gtk.VBox {
+public class TaskList: Gtk.Box {
     static X.Atom xatom__net_client_list =
         Gdk.X11.get_xatom_by_name("_NET_CLIENT_LIST");
     static X.Atom xatom__net_active_window =
@@ -264,7 +256,7 @@ public class TaskList: Gtk.VBox {
         );
     
     public TaskList() {
-        Object(homogeneous: true);
+        Object(orientation: Gtk.Orientation.VERTICAL, homogeneous: true);
     }
     
     construct {
@@ -274,7 +266,7 @@ public class TaskList: Gtk.VBox {
     public override void realize() {
         base.realize();
         
-        Gdk.Window root = this.get_root_window();
+        Gdk.Window root = this.get_screen().get_root_window();
         root.set_events(root.get_events() | Gdk.EventMask.PROPERTY_CHANGE_MASK);
         root.add_filter(this.filter_root_window_xevent);
             // Apparently it is impossible to use a real closure for this,
@@ -282,7 +274,7 @@ public class TaskList: Gtk.VBox {
     }
     
     public override void unrealize() {
-        Gdk.Window root = this.get_root_window();
+        Gdk.Window root = this.get_screen().get_root_window();
         root.remove_filter(this.filter_root_window_xevent);
         
         base.unrealize();
@@ -301,10 +293,10 @@ public class TaskList: Gtk.VBox {
             xev->type == X.EventType.PropertyNotify
             && xev->xproperty.window == xroot
         ) {
-            if (xev->xproperty.atom == this.xatom__net_client_list) {
+            if (xev->xproperty.atom == xatom__net_client_list) {
                 this.on_client_list_changed();
             }
-            else if (xev->xproperty.atom == this.xatom__net_active_window) {
+            else if (xev->xproperty.atom == xatom__net_active_window) {
                 this.on_active_window_changed();
             }
         }
@@ -319,7 +311,7 @@ public class TaskList: Gtk.VBox {
             get_window_property32(
                 xdisplay,
                 xroot,
-                this.xatom__net_client_list,
+                xatom__net_client_list,
                 false,
                 X.XA_WINDOW,
                 out windows
@@ -481,13 +473,14 @@ public class TaskList: Gtk.VBox {
         }
     }
     
+    // FIXME: Gutter no longer responds to the active window changing
     protected void on_active_window_changed() {
         XArray32 xwindow_arr;
         if (
             get_window_property32(
                 Gdk.X11.get_default_xdisplay(),
                 Gdk.X11.get_default_root_xwindow(),
-                this.xatom__net_active_window,
+                xatom__net_active_window,
                 false,
                 X.XA_WINDOW,
                 out xwindow_arr
