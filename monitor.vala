@@ -123,6 +123,15 @@ public class Monitor: Gtk.Box
         });
     }
     
+    public override void get_preferred_height(
+        out int minimum, out int natural
+    ) {
+        int height;
+        this.cpu.get_size_request(null, out height);
+        minimum = height;
+        natural = height;
+    }
+    
     private static ulong get_cpu_time() {
         var stat_file = FileStream.open("/proc/stat", "r");
         if (stat_file == null) return 0;
